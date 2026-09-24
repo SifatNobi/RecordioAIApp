@@ -10,6 +10,29 @@ export const CAPTURE_METHODS = {
 export const TAGLINE = "Prove What Your AI Promised.";
 export const SUBTAGLINE = "The trust layer for AI conversations.";
 
+// Fixed tag color palette — these must look identical in light & dark, so hex literals are intentional.
+export const TAG_COLORS: { key: string; hex: string; label: string }[] = [
+  { key: "slate", hex: "#64748B", label: "Slate" },
+  { key: "red", hex: "#DC2626", label: "Red" },
+  { key: "amber", hex: "#D97706", label: "Amber" },
+  { key: "green", hex: "#059669", label: "Green" },
+  { key: "blue", hex: "#2563EB", label: "Blue" },
+  { key: "violet", hex: "#7C3AED", label: "Violet" },
+];
+
+export function tagColorHex(key?: string): string | null {
+  if (!key) return null;
+  const found = TAG_COLORS.find((c) => c.key === key);
+  return found ? found.hex : null;
+}
+
+export const DATE_FILTERS: { key: string; label: string; days: number | null }[] = [
+  { key: "all", label: "All", days: null },
+  { key: "7d", label: "7 days", days: 7 },
+  { key: "30d", label: "30 days", days: 30 },
+  { key: "90d", label: "90 days", days: 90 },
+];
+
 export const PLANS = [
   {
     id: "grey_parrot",

@@ -1,19 +1,44 @@
 import { Text, View } from "react-native";
-import { CaretRight, ShieldCheck, WarningCircle } from "phosphor-react-native";
+import { CaretRight, ShieldCheck, WarningCircle, CheckCircle, CircleIcon as Circle } from "phosphor-react-native";
 
 import { Card, Badge } from "@/src/components/ui";
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
-import { Record } from "@/src/api";
+import { Record, Record2 } from "@/src/api";
 import { formatDate, conversationTone } from "@/src/format";
+import { tagColorHex } from "@/src/constants";
 
-export function RecordCard({ record, onPress }: { record: Record; onPress: () => void }) {
+export function RecordCard({
+  record,
+  onPress,
+  selectable,
+  selected,
+  tagColors,
+}: {
+  record: Record;
+  onPress: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  tagColors?: Record2;
+}) {
   const styles = useStyles();
   const { colors } = useTheme();
   const verified = record.verification_status === "verified";
   return (
-    <Card testID={`record-card-${record.record_id}`} onPress={onPress} style={styles.card}>
+    <Card
+      testID={`record-card-${record.record_id}`}
+      onPress={onPress}
+      style={[styles.card, selectable && selected && styles.cardSelected]}
+    >
       <View style={styles.topRow}>
-        <Text style={styles.recordId}>{record.record_id}</Text>
+        <View style={styles.idWrap}>
+          {selectable &&
+            (selected ? (
+              <CheckCircle color={colors.brand} size={20} weight="fill" />
+            ) : (
+              <Circle color={colors.muted} size={20} weight="regular" />
+            ))}
+          <Text style={styles.recordId}>{record.record_id}</Text>
+        </View>
         <View style={styles.statusRow}>
           {verified ? (
             <ShieldCheck color={colors.success} size={16} weight="fill" />
@@ -32,12 +57,23 @@ export function RecordCard({ record, onPress }: { record: Record; onPress: () =>
 
       {record.tags && record.tags.length > 0 && (
         <View style={styles.tagRow}>
-          {record.tags.slice(0, 3).map((t) => (
-            <View key={t} style={styles.tagChip}>
-              <Text style={styles.tagChipText}>{t}</Text>
-            </View>
-          ))}
-          {record.tags.length > 3 && <Text style={styles.tagMore}>+{record.tags.length - 3}</Text>}
+          {record.tags.slice(0, 4).map((t) => {
+            const hex = tagColorHex(tagColors?.[t]);
+            return (
+              <View
+                key={t}
+                style={[
+                  styles.tagChip,
+                  hex ? { backgroundColor: hex } : { backgroundColor: colors.brandTertiary },
+                ]}
+              >
+                <Text style={[styles.tagChipText, hex ? { color: "#FFFFFF" } : { color: colors.onBrandTertiary }]}>
+                  {t}
+                </Text>
+              </View>
+            );
+          })}
+          {record.tags.length > 4 && <Text style={styles.tagMore}>+{record.tags.length - 4}</Text>}
         </View>
       )}
 
@@ -47,7 +83,7 @@ export function RecordCard({ record, onPress }: { record: Record; onPress: () =>
         <Text style={styles.dot}>·</Text>
         <Text style={styles.meta}>{formatDate(record.created_at)}</Text>
         <View style={{ flex: 1 }} />
-        <CaretRight color={colors.muted} size={16} weight="bold" />
+        {!selectable && <CaretRight color={colors.muted} size={16} weight="bold" />}
       </View>
     </Card>
   );
@@ -55,19 +91,16 @@ export function RecordCard({ record, onPress }: { record: Record; onPress: () =>
 
 const useStyles = makeStyles((colors) => ({
   card: { gap: spacing.md },
+  cardSelected: { borderColor: colors.brand, borderWidth: 2 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  idWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   recordId: { color: colors.onSurface, fontFamily: fonts.monoMedium, fontSize: fontSize.base },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   statusText: { fontFamily: fonts.medium, fontSize: fontSize.sm },
   summary: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
   tagRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.xs },
-  tagChip: {
-    backgroundColor: colors.brandTertiary,
-    borderRadius: radius.sm,
-    paddingVertical: 3,
-    paddingHorizontal: spacing.sm,
-  },
-  tagChipText: { color: colors.onBrandTertiary, fontFamily: fonts.medium, fontSize: 11 },
+  tagChip: { borderRadius: radius.sm, paddingVertical: 3, paddingHorizontal: spacing.sm },
+  tagChipText: { fontFamily: fonts.medium, fontSize: 11 },
   tagMore: { color: colors.muted, fontFamily: fonts.medium, fontSize: 11 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm },

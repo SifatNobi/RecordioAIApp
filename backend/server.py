@@ -6,7 +6,7 @@ import logging
 import tempfile
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Header, Depends
 from dotenv import load_dotenv
@@ -80,6 +80,17 @@ class RecordCreate(BaseModel):
 class RecordUpdate(BaseModel):
     tags: List[str] = Field(default_factory=list)
     notes: Optional[str] = ""
+
+
+class AgentProfile(BaseModel):
+    name: str
+    version: Optional[str] = ""
+    policy_version: Optional[str] = ""
+    conversation_type: Optional[str] = "Support"
+
+
+class TagColors(BaseModel):
+    colors: Dict[str, str] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -357,13 +368,27 @@ async def create_record(body: RecordCreate, user=Depends(get_current_user)):
 
 
 @api.get("/records")
-async def list_records(q: Optional[str] = None, tag: Optional[str] = None, user=Depends(get_current_user)):
+async def list_records(
+    q: Optional[str] = None,
+    tag: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    user=Depends(get_current_user),
+):
     query = {"user_id": user["user_id"], "deleted_at": None}
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
         query["$or"] = [{"agent_name": rx}, {"record_id": rx}, {"summary": rx}, {"tags": rx}, {"notes": rx}]
     if tag:
         query["tags"] = tag
+    if start or end:
+        created = {}
+        if start:
+            created["$gte"] = start
+        if end:
+            # end is a YYYY-MM-DD day; include the whole day
+            created["$lte"] = end + "T23:59:59.999999+00:00"
+        query["created_at"] = created
     cursor = db.records.find(query, {"_id": 0}).sort("created_at", -1)
     records = await cursor.to_list(500)
     return {"records": records}
@@ -433,6 +458,62 @@ async def delete_record(record_id: str, user=Depends(get_current_user)):
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Saved agent profiles
+# ---------------------------------------------------------------------------
+@api.get("/agents")
+async def list_agents(user=Depends(get_current_user)):
+    cursor = db.agent_profiles.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1)
+    return {"agents": await cursor.to_list(200)}
+
+
+@api.post("/agents")
+async def create_agent(body: AgentProfile, user=Depends(get_current_user)):
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="Agent name is required.")
+    import uuid
+    doc = {
+        "agent_id": f"ag_{uuid.uuid4().hex[:12]}",
+        "user_id": user["user_id"],
+        "name": body.name.strip(),
+        "version": (body.version or "").strip(),
+        "policy_version": (body.policy_version or "").strip(),
+        "conversation_type": body.conversation_type or "Support",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.agent_profiles.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str, user=Depends(get_current_user)):
+    res = await db.agent_profiles.delete_one({"agent_id": agent_id, "user_id": user["user_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Agent profile not found")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Tag colors
+# ---------------------------------------------------------------------------
+@api.get("/tag-colors")
+async def get_tag_colors(user=Depends(get_current_user)):
+    doc = await db.user_settings.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"colors": (doc or {}).get("tag_colors", {})}
+
+
+@api.put("/tag-colors")
+async def set_tag_colors(body: TagColors, user=Depends(get_current_user)):
+    clean = {k.strip(): v for k, v in (body.colors or {}).items() if k.strip() and v}
+    await db.user_settings.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"tag_colors": clean, "user_id": user["user_id"]}},
+        upsert=True,
+    )
+    return {"colors": clean}
 
 
 app.include_router(api)

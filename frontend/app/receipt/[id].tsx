@@ -27,6 +27,7 @@ import { useToast } from "@/src/toast";
 import { api, Commitment, Record } from "@/src/api";
 import { formatDateTime, conversationTone } from "@/src/format";
 import { buildEvidenceHtml } from "@/src/evidence";
+import { TAG_COLORS, tagColorHex } from "@/src/constants";
 
 const SECTIONS: { key: keyof Record; label: string }[] = [
   { key: "promises", label: "Promises" },
@@ -51,9 +52,12 @@ export default function Receipt() {
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editColors, setEditColors] = useState<{ [t: string]: string }>({});
 
   const recordQ = useQuery({ queryKey: ["record", id], queryFn: () => api.getRecord(id!) , enabled: !!id });
   const record = recordQ.data;
+  const tagColorsQ = useQuery({ queryKey: ["tag-colors"], queryFn: api.getTagColors });
+  const tagColors = tagColorsQ.data?.colors ?? {};
 
   const verifyMut = useMutation({
     mutationFn: () => api.verifyRecord(id!),
@@ -81,11 +85,17 @@ export default function Receipt() {
   });
 
   const editMut = useMutation({
-    mutationFn: () => api.updateRecord(id!, { tags: editTags, notes: editNotes.trim() }),
+    mutationFn: async () => {
+      const rec = await api.updateRecord(id!, { tags: editTags, notes: editNotes.trim() });
+      const merged = { ...(tagColorsQ.data?.colors ?? {}), ...editColors };
+      await api.setTagColors(merged);
+      return rec;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["record", id] });
       qc.invalidateQueries({ queryKey: ["records"] });
       qc.invalidateQueries({ queryKey: ["tags"] });
+      qc.invalidateQueries({ queryKey: ["tag-colors"] });
       setEditOpen(false);
       toast.show("Tags & notes updated.", "success");
     },
@@ -95,6 +105,7 @@ export default function Receipt() {
   const openEdit = () => {
     setEditTags(record?.tags ?? []);
     setEditNotes(record?.notes ?? "");
+    setEditColors({ ...(tagColorsQ.data?.colors ?? {}) });
     setEditTagInput("");
     setEditOpen(true);
   };
@@ -228,12 +239,19 @@ export default function Receipt() {
           <Card style={{ gap: spacing.md }}>
             {record.tags.length > 0 ? (
               <View style={styles.tagWrap}>
-                {record.tags.map((t) => (
-                  <View key={t} style={styles.tagChip} testID={`receipt-tag-${t}`}>
-                    <Tag color={colors.onBrandTertiary} size={12} weight="fill" />
-                    <Text style={styles.tagChipText}>{t}</Text>
-                  </View>
-                ))}
+                {record.tags.map((t) => {
+                  const hex = tagColorHex(tagColors[t]);
+                  return (
+                    <View
+                      key={t}
+                      style={[styles.tagChip, hex ? { backgroundColor: hex } : null]}
+                      testID={`receipt-tag-${t}`}
+                    >
+                      <Tag color={hex ? "#FFFFFF" : colors.onBrandTertiary} size={12} weight="fill" />
+                      <Text style={[styles.tagChipText, hex ? { color: "#FFFFFF" } : null]}>{t}</Text>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text style={styles.emptyCtx}>No tags yet.</Text>
@@ -380,6 +398,29 @@ export default function Receipt() {
               placeholderTextColor={colors.muted}
               style={styles.editNotes}
             />
+            {editTags.length > 0 && (
+              <View style={styles.colorSection}>
+                <Text style={styles.colorHeading}>Tag colors</Text>
+                {editTags.map((t) => (
+                  <View key={t} style={styles.colorRow}>
+                    <Text style={styles.colorTagName} numberOfLines={1}>{t}</Text>
+                    <View style={styles.swatchRow}>
+                      {TAG_COLORS.map((c) => {
+                        const active = editColors[t] === c.key;
+                        return (
+                          <Pressable
+                            key={c.key}
+                            testID={`swatch-${t}-${c.key}`}
+                            onPress={() => setEditColors((prev) => ({ ...prev, [t]: c.key }))}
+                            style={[styles.swatch, { backgroundColor: c.hex }, active && styles.swatchActive]}
+                          />
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
             <View style={styles.modalBtns}>
               <Button label="Cancel" variant="secondary" onPress={() => setEditOpen(false)} style={{ flex: 1 }} />
               <Button label="Save" testID="edit-save" loading={editMut.isPending} onPress={() => editMut.mutate()} style={{ flex: 1 }} />
@@ -502,6 +543,13 @@ const useStyles = makeStyles((colors) => ({
     fontFamily: fonts.regular,
     fontSize: fontSize.base,
   },
+  colorSection: { gap: spacing.sm },
+  colorHeading: { color: colors.muted, fontFamily: fonts.monoMedium, fontSize: fontSize.sm, letterSpacing: 1, textTransform: "uppercase" },
+  colorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  colorTagName: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: fontSize.base, flex: 1 },
+  swatchRow: { flexDirection: "row", gap: spacing.sm },
+  swatch: { width: 24, height: 24, borderRadius: radius.pill, borderWidth: 2, borderColor: "transparent" },
+  swatchActive: { borderColor: colors.onSurface },
   countPill: { color: colors.brand, fontFamily: fonts.monoMedium, fontSize: fontSize.base },
   emptyCommit: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
   commitTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

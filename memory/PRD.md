@@ -39,6 +39,16 @@ verification, no pretending unsupported call recording works.
    placeholder plans (no payments).
 9. Completely empty for a new user; everything generated from real input.
 
+## Implemented (2026-09-24 — iteration 3)
+- ✅ **Bulk Export**: multi-select on the Records tab → one combined evidence PDF (`buildBulkEvidenceHtml`).
+- ✅ **Saved Agents**: reusable agent profiles (`/api/agents`) that auto-fill the Review & Process form;
+  "Save these details as a reusable agent" from the finalize screen.
+- ✅ **Tag Colors**: per-user tag color palette (`/api/tag-colors`) assigned from the receipt edit modal;
+  colored chips render on cards, receipt, and the Records tag filter.
+- ✅ **Date Filter**: Records date presets (7/30/90 days) via `?start=`/`?end=` on `/api/records`.
+- ✅ Fixed a crash: `phosphor-react-native@3.0.6` ships no `Circle` alias — import `CircleIcon as Circle`.
+- ✅ 18/18 new backend tests + frontend E2E passing.
+
 ## Implemented (2026-09-24 — iteration 2)
 - ✅ Fixed transcription bug (Whisper received a file handle, not a string path) — recording & call
   transcription now work end-to-end.

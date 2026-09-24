@@ -89,6 +89,18 @@ export type Record = {
   last_verified_at: string;
 };
 
+export type Agent = {
+  agent_id: string;
+  name: string;
+  version: string;
+  policy_version: string;
+  conversation_type: string;
+  created_at: string;
+};
+
+// Simple string->string map (tag -> color key). Named to avoid clashing with the Record document type.
+export type Record2 = { [tag: string]: string };
+
 export const api = {
   authSession: (session_id: string) =>
     request<{ session_token: string; user: User }>("/auth/session", {
@@ -98,14 +110,23 @@ export const api = {
   me: () => request<User>("/auth/me"),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   trial: () => request<Trial>("/trial"),
-  listRecords: (q?: string, tag?: string) => {
+  listRecords: (q?: string, tag?: string, start?: string, end?: string) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (tag) params.set("tag", tag);
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
     const qs = params.toString();
     return request<{ records: Record[] }>(`/records${qs ? `?${qs}` : ""}`);
   },
   listTags: () => request<{ tags: string[] }>("/tags"),
+  listAgents: () => request<{ agents: Agent[] }>("/agents"),
+  createAgent: (payload: { name: string; version?: string; policy_version?: string; conversation_type?: string }) =>
+    request<Agent>("/agents", { method: "POST", body: JSON.stringify(payload) }),
+  deleteAgent: (id: string) => request<{ ok: boolean }>(`/agents/${id}`, { method: "DELETE" }),
+  getTagColors: () => request<{ colors: Record2 }>("/tag-colors"),
+  setTagColors: (colors: Record2) =>
+    request<{ colors: Record2 }>("/tag-colors", { method: "PUT", body: JSON.stringify({ colors }) }),
   getRecord: (id: string) => request<Record>(`/records/${id}`),
   updateRecord: (id: string, payload: { tags: string[]; notes: string }) =>
     request<Record>(`/records/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),

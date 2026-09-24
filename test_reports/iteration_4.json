@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 4 (Saved Agents + Tag Colors + Date Filter + Bulk Export) — backend 18/18 pytest PASS. Frontend E2E: saved-agents flow works (agent-chip appears and fills finalize-agent-name + finalize-agent-version), tag-color assignment works (receipt-tag-TEST_iter4ui bg went from rgb(30,27,75) to rgb(220,38,38) after selecting swatch-<tag>-red and edit-save), date filters render all 4 chips (all/7d/30d/90d) and toggling 7d->All works without errors, Gemini extraction still real (transcript_sha256 valid, verify match=true, summary+commitments populated). CRITICAL BUG FOUND AND FIXED: RecordCard threw 'Element type is invalid ... Check the render method of RecordCard' the moment records-select was tapped — root cause was `Circle` icon import from phosphor-react-native v3.0.6 which only exports the icon as `CircleIcon` (all other icons the app uses ship with a deprecated `Circle`-style alias, but `Circle` itself does NOT — it only exports `CircleIcon`). Fix applied: /app/frontend/src/components/record-card.tsx line 2 now imports `CircleIcon as Circle`. After the fix, Records tab in select mode renders both cards without crash and the records-bulk-export button renders with the correct 'Export Evidence (N)' label. Bulk-export end-to-end (tap card → count increments → tap export → window.print fires) could not be fully validated because FlatList registers 2 nodes with the same data-testid=record-card-RCP-2026-000001 in the DOM (virtualization/measurement clone), so Playwright's click on the card in select mode targeted a non-interactive clone and selection didn't increment; the button and its count string are wired correctly (verified as 'Export Evidence (0)' with disabled state at 0). All test data cleaned up: RCP-2026-000009 and TEST_UIAgent_iter4 deleted via API, tag-colors reset to {}. Only seeded RCP-2026-000001 remains. Deprecated packages detected: none new.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "src/components/record-card.tsx",
+        "issue": "CRITICAL (FIXED by testing agent). Importing { Circle } from 'phosphor-react-native' (v3.0.6) returns undefined because that package only exports `CircleIcon` for the Circle glyph (unlike every other icon used in the app which ships a deprecated old-name alias). This crashed RecordCard with 'Element type is invalid ... Check the render method of RecordCard' the moment select mode was enabled, blocking the entire Bulk Export flow. Fix applied: `import { ..., CheckCircle, CircleIcon as Circle } from 'phosphor-react-native'` (record-card.tsx:2). Please verify and consider grepping the codebase for other bare `Circle` imports.",
+        "testID": "record-card-* / records-select / records-bulk-export",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "(tabs)/records.tsx FlatList",
+        "issue": "The record-card-RCP-2026-000001 testID renders TWICE in the DOM (query_selector_all returns 2 nodes while only 1 is visible). This is a FlatList virtualization/measurement artifact on web but it caused Playwright taps on the card in select mode to hit a non-interactive clone, so selection didn't increment the count. User impact on real devices is nil (only the visible node responds to touch), but consider a `getItemLayout` or removing the duplicate render to make automated tests reliable.",
+        "testID": "record-card-*",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/pytest_iteration4.xml"
+  ],
+  "action_items": [
+    "VERIFY the record-card.tsx fix (CircleIcon as Circle) and grep the rest of the codebase for other bare `Circle` imports from phosphor-react-native — the deprecated-alias export is missing ONLY for Circle in v3.0.6.",
+    "OPTIONAL / LOW: prevent the duplicate DOM node for record-card-* under FlatList on web (adds fragility to automated e2e; users are unaffected)."
+  ],
+  "critical_code_review_comments": [
+    "server.py agents endpoints (L466-496) correctly scope by user_id, strip _id in projections, validate empty name -> 422, and return {ok: true} + 404 on delete-of-unknown; matches spec.",
+    "server.py PUT /tag-colors (L508-516) correctly drops keys/values that are empty/whitespace and upserts per user; GET returns {} initially — matches spec exactly.",
+    "server.py list_records date filter (L384-391) uses string comparison on ISO-8601 `created_at` and pads end with `T23:59:59.999999+00:00`. That works for our stored ISO strings but is fragile: if any record's created_at ever loses the trailing '+00:00' or uses a different offset, comparison could go wrong. Prefer storing created_at as a native BSON datetime and comparing datetime objects.",
+    "record-card.tsx imports both `Record` and `Record2` from src/api as pure types — babel-typescript strips them at build time so no runtime harm, but naming a local type `Record` shadows JS's global `Record<K,V>` inside this file; consider renaming to `RecordDoc` and `TagColorMap` for clarity.",
+    "records.tsx computes `start` from DATE_FILTERS.days but never sends an `end`, so 7d/30d/90d work as expected (>= start). Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py (new pytest suite for iteration 4 — 18 tests)",
+    "/app/frontend/src/components/record-card.tsx (CRITICAL FIX: `CircleIcon as Circle` import to unblock select mode)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "~90% (saved-agents, tag-colors, date-filter, RecordCard-after-fix all pass; bulk-export end-to-end click-through not fully automatable due to duplicate FlatList DOM node, but the button+count wiring rendered correctly)"},
+  "seed_data_creation": "Created 1 pytest record (deleted in same suite) and 1 UI record RCP-2026-000009 + 1 agent profile TEST_UIAgent_iter4 during Playwright E2E; both cleaned via authenticated DELETE at end of run. tag-colors reset to {}. Only seeded RCP-2026-000001 remains for the test user.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 4 backend suite: /app/backend/tests/test_iteration4.py — run `pytest backend/tests/test_iteration4.py -o addopts= -v` (uses module-level shared state dict). Frontend key testIDs: home-create-record, method-transcript (NOT method-paste), transcript-input, transcript-continue, finalize-agent-name/version/policy-version/tag-input/add-tag/notes/consent/process/save-agent, agent-chip-<agent_id>, conv-type-<Sales|Support|Billing|Other>, receipt-record-id/tag-<name>/edit-context/notes, swatch-<tag>-<red|amber|green|blue|violet|slate>, edit-save, date-chip-<all|7d|30d|90d>, records-select, records-select-cancel, record-card-<RID>, records-bulk-export. On web, bulk export uses window.print — inject a shim in an init script if you want to count invocations. The Records FlatList currently duplicates each record-card testID node in the DOM; use `page.locator(...).first` AND scroll/hover if you need to trigger the visible one. Only seeded record for the test user is RCP-2026-000001.",
+  "rca_of_issue": "RecordCard Element-type crash (fixed): `phosphor-react-native@3.0.6` renamed its default named icon exports to *Icon (e.g. `Circle` -> `CircleIcon`) and left deprecated aliases only for the icons that already had a stable public API. `Circle` was NOT given a deprecation alias — its .js only contains `export { I as CircleIcon }`, so `import { Circle } from 'phosphor-react-native'` resolves to `undefined`. That's fine at compile time but blows up React's `createElement(Circle, ...)` at render time with the observed 'expected a string or class/function but got undefined'. Reproduction: navigate to Records tab, tap `records-select` — RecordCard's unselected-checkbox branch renders `<Circle .../>` and throws. Fix (applied): change the import to `CircleIcon as Circle`. Alternative acceptable fixes: use `CircleIcon` directly, or swap to another phosphor glyph like `CircleDashed` (has the deprecated alias)."
+}

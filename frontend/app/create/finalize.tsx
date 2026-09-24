@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CheckSquare, Square, ShieldCheck, Plus, X } from "phosphor-react-native";
+import { CheckSquare, Square, ShieldCheck, Plus, X, UserCircle, FloppyDisk } from "phosphor-react-native";
 
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
 import { AppHeader, Button, SectionLabel, Badge } from "@/src/components/ui";
@@ -32,6 +32,41 @@ export default function Finalize() {
   const [notes, setNotes] = useState("");
   const [consent, setConsent] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [savingAgent, setSavingAgent] = useState(false);
+
+  const agentsQ = useQuery({ queryKey: ["agents"], queryFn: api.listAgents });
+  const agents = agentsQ.data?.agents ?? [];
+
+  const applyAgent = (a: { name: string; version: string; policy_version: string; conversation_type: string }) => {
+    setAgentName(a.name);
+    setAgentVersion(a.version || "");
+    setPolicyVersion(a.policy_version || "");
+    if (CONVERSATION_TYPES.includes(a.conversation_type as ConversationType)) {
+      setConvType(a.conversation_type as ConversationType);
+    }
+  };
+
+  const saveAgent = async () => {
+    if (!agentName.trim()) {
+      toast.show("Enter an agent name first.", "error");
+      return;
+    }
+    setSavingAgent(true);
+    try {
+      await api.createAgent({
+        name: agentName.trim(),
+        version: agentVersion.trim(),
+        policy_version: policyVersion.trim(),
+        conversation_type: convType,
+      });
+      await qc.invalidateQueries({ queryKey: ["agents"] });
+      toast.show("Agent profile saved.", "success");
+    } catch (e: any) {
+      toast.show(e?.message || "Could not save agent profile.", "error");
+    } finally {
+      setSavingAgent(false);
+    }
+  };
 
   const addTag = () => {
     const t = tagInput.trim();
@@ -113,6 +148,20 @@ export default function Finalize() {
         <View style={{ gap: spacing.lg }}>
           <SectionLabel>Record Details</SectionLabel>
 
+          {agents.length > 0 && (
+            <View>
+              <Text style={styles.agentsHint}>Tap a saved agent to auto-fill</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.agentRow}>
+                {agents.map((a) => (
+                  <Pressable key={a.agent_id} testID={`agent-chip-${a.agent_id}`} onPress={() => applyAgent(a)} style={styles.agentChip}>
+                    <UserCircle color={colors.brand} size={16} weight="fill" />
+                    <Text style={styles.agentChipText} numberOfLines={1}>{a.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           <Field label="Agent / Representative Name" required>
             <TextInput
               testID="finalize-agent-name"
@@ -164,6 +213,15 @@ export default function Finalize() {
               })}
             </View>
           </Field>
+
+          <Pressable testID="finalize-save-agent" onPress={saveAgent} disabled={savingAgent} style={styles.saveAgentBtn}>
+            {savingAgent ? (
+              <ActivityIndicator color={colors.brand} size="small" />
+            ) : (
+              <FloppyDisk color={colors.brand} size={16} weight="bold" />
+            )}
+            <Text style={styles.saveAgentText}>Save these details as a reusable agent</Text>
+          </Pressable>
 
           <Field label="Tags (optional)">
             <View style={styles.tagInputRow}>
@@ -286,6 +344,22 @@ const useStyles = makeStyles((colors) => ({
   },
   fieldLabel: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: fontSize.base, marginBottom: spacing.sm },
   req: { color: colors.error },
+  agentsHint: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm, marginBottom: spacing.sm },
+  agentRow: { gap: spacing.sm, paddingRight: spacing.lg },
+  agentChip: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    maxWidth: 220,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+  },
+  agentChipText: { color: colors.onBrandTertiary, fontFamily: fonts.medium, fontSize: fontSize.sm },
+  saveAgentBtn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "flex-start" },
+  saveAgentText: { color: colors.brand, fontFamily: fonts.semibold, fontSize: fontSize.base },
   input: {
     backgroundColor: colors.surfaceSecondary,
     borderColor: colors.border,
