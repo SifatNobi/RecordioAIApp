@@ -82,7 +82,9 @@ jobs:
         run: |
           # Debug builds compile each ABI's C++ from scratch; a real phone only
           # needs the ARM ABIs. Emulator-only x86/x86_64 ABIs are excluded here.
-          echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
+          # Leading newline: the generated gradle.properties has no trailing newline.
+          printf "\nreactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
+          tail -2 android/gradle.properties
 
       - name: Build Android Test APK (debug)
         run: |
