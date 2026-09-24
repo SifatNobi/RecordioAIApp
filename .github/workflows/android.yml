@@ -73,6 +73,17 @@ jobs:
       - name: Generate the native Android project
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Free CI runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules
+          df -h "$HOME"
+
+      - name: Target phone ABIs only (saves CI build disk/time)
+        run: |
+          # Debug builds compile each ABI's C++ from scratch; a real phone only
+          # needs the ARM ABIs. Emulator-only x86/x86_64 ABIs are excluded here.
+          echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
+
       - name: Build Android Test APK (debug)
         run: |
           cd android
