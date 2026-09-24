@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OnboardingState, AppSettings, AIAgent, Conversation, Customer } from '@/types';
 
 interface AppState {
@@ -132,7 +134,9 @@ export const useAppStore = create<AppState & AppActions>()(
     }),
     {
       name: 'recordioai-app-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() =>
+        Platform.OS === 'web' ? localStorage : AsyncStorage
+      ),
       partialize: (state) => ({
         onboarding: state.onboarding,
         settings: state.settings,

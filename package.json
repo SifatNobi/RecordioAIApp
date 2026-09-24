@@ -1,7 +1,7 @@
 {
   "name": "recordioai",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -12,7 +12,6 @@
     "date-fns": "^4.4.0",
     "expo": "~57.0.24",
     "expo-application": "~57.0.3",
-    "expo-av": "^16.0.8",
     "expo-background-fetch": "~57.0.19",
     "expo-build-properties": "~57.0.21",
     "expo-constants": "~57.0.19",
