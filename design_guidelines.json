@@ -1,0 +1,229 @@
+{
+  "app_name": "RecordioAI",
+  "personality": "1 iOS-Native Clean fused with 5 Brutalist precision (Monospace typography for hashes, strict structural borders, utility-first layouts)",
+  "personality_one_liner": "The trust layer for AI—a precise, structured, and immutable environment that feels like modern security infrastructure and enterprise developer tooling.",
+  "color": {
+    "light": {
+      "surface": "#FFFFFF",
+      "onSurface": "#111827",
+      "surfaceSecondary": "#F9FAFB",
+      "onSurfaceSecondary": "#1F2937",
+      "surfaceTertiary": "#F3F4F6",
+      "onSurfaceTertiary": "#374151",
+      "surfaceInverse": "#0F172A",
+      "onSurfaceInverse": "#F8FAFC",
+      "brand": "#4338CA",
+      "onBrand": "#FFFFFF",
+      "brandPrimary": "#4F46E5",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#E0E7FF",
+      "onBrandSecondary": "#3730A3",
+      "brandTertiary": "#EEF2FF",
+      "onBrandTertiary": "#4338CA",
+      "success": "#059669",
+      "onSuccess": "#FFFFFF",
+      "warning": "#D97706",
+      "onWarning": "#FFFFFF",
+      "error": "#DC2626",
+      "onError": "#FFFFFF",
+      "border": "#E5E7EB",
+      "borderStrong": "#9CA3AF",
+      "divider": "#F3F4F6",
+      "muted": "#6B7280"
+    },
+    "dark": {
+      "surface": "#0B0F19",
+      "onSurface": "#F9FAFB",
+      "surfaceSecondary": "#111827",
+      "onSurfaceSecondary": "#F3F4F6",
+      "surfaceTertiary": "#1F2937",
+      "onSurfaceTertiary": "#D1D5DB",
+      "surfaceInverse": "#FFFFFF",
+      "onSurfaceInverse": "#0F172A",
+      "brand": "#6366F1",
+      "onBrand": "#FFFFFF",
+      "brandPrimary": "#6366F1",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#3730A3",
+      "onBrandSecondary": "#E0E7FF",
+      "brandTertiary": "#1E1B4B",
+      "onBrandTertiary": "#818CF8",
+      "success": "#10B981",
+      "onSuccess": "#064E3B",
+      "warning": "#F59E0B",
+      "onWarning": "#78350F",
+      "error": "#EF4444",
+      "onError": "#7F1D1D",
+      "border": "#1F2937",
+      "borderStrong": "#4B5563",
+      "divider": "#111827",
+      "muted": "#9CA3AF"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Geist",
+    "textFontFamily": "Geist",
+    "monoFontFamily": "Geist Mono",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous structural padding on screens. Cards use md (12px) internal padding. Maintain strict hierarchy with consistent gaps.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 16,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [
+      "Avoid glass entirely to maintain the solid, secure, structural 'developer infrastructure' aesthetic."
+    ],
+    "dont's": [
+      "Do not use blur or glassmorphism on tab bars, headers, or cards. Use solid surfaceSecondary or borders instead."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "none",
+      "android": "none",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "none",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Dashboard)",
+      "purpose": "Provides high-level workspace overview, limits, and primary action to capture a new record.",
+      "states": {
+        "loading": "Skeleton UI for metrics and recent records.",
+        "empty": "Empty state illustration of a secure vault, 'No records yet', and a primary 'Create Record' CTA.",
+        "error": "Failed to load records banner with a 'Retry' button."
+      },
+      "layout": "Header with user profile/settings. Metric cards (total records, trial limit 10). A prominent sticky 'Create Record' FAB or bottom CTA. A list of recent records underneath with Record ID (monospace) and timestamps."
+    },
+    {
+      "name": "Create Record",
+      "purpose": "Select the capture method for the conversation.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "Microphone permission error or API failure."
+      },
+      "layout": "Grid or vertical stack of 3 distinct cards (Record Mic, Phone Call, Paste Transcript). Each card uses surfaceSecondary with a subtle border and Phosphor icon. Clean, tool-like interaction."
+    },
+    {
+      "name": "Metadata & Consent",
+      "purpose": "Form to tag the agent/conversation and confirm legal consent.",
+      "states": {
+        "loading": "Saving state on primary button.",
+        "empty": "N/A",
+        "error": "Validation errors on required fields with red outline."
+      },
+      "layout": "Single column form. Labels above inputs. Segmented control or dropdowns for Agent Name and Conversation Type (Sales/Support/Billing). Explicit checkbox for Consent. Sticky 'Proceed' CTA at the bottom inside KeyboardAvoidingView."
+    },
+    {
+      "name": "Transcript Review",
+      "purpose": "Review and manually edit extracted transcript before committing.",
+      "states": {
+        "loading": "Processing transcript spinner.",
+        "empty": "N/A",
+        "error": "Error parsing audio/text."
+      },
+      "layout": "Full-height text area with monospace or highly readable sans-serif typography. Floating action button or sticky bottom bar to 'Extract Commitments'."
+    },
+    {
+      "name": "Conversation Receipt",
+      "purpose": "The core trust document showing immutable evidence, hash, and extracted commitments.",
+      "states": {
+        "loading": "Generating hash and receipt...",
+        "empty": "N/A",
+        "error": "Verification failed state (red banner)."
+      },
+      "layout": "Receipt-style layout. Top header with 'Verified' green badge or 'Mismatch' red badge. Monospace typography for Record ID (RCP-2026-000001) and SHA-256 hash block. Extracted commitment cards highlighting quotes. 'Verify Integrity' secondary button and 'Export Evidence' sticky primary CTA at the bottom."
+    },
+    {
+      "name": "Records History",
+      "purpose": "Searchable archive of all logged receipts.",
+      "states": {
+        "loading": "Skeleton list.",
+        "empty": "No records match search.",
+        "error": "Failed to fetch archive."
+      },
+      "layout": "Search bar pinned at the top. Flat list of record cards. Each card displays ID, Date, Agent, and status badge."
+    },
+    {
+      "name": "Pricing / Upgrade",
+      "purpose": "Showcase premium plans for users exceeding trial limits.",
+      "states": {
+        "loading": "Fetching plans...",
+        "empty": "N/A",
+        "error": "Billing system unavailable."
+      },
+      "layout": "Carousel or stacked list of tier cards (Grey Parrot, Myna, Enterprise). Emphasize features with checkmarks. Dark mode aesthetic here can emphasize premium/security feel."
+    },
+    {
+      "name": "Google Login",
+      "purpose": "Single Sign-On access to the business workspace.",
+      "states": {
+        "loading": "Authenticating spinner...",
+        "empty": "N/A",
+        "error": "Login failed message."
+      },
+      "layout": "Centered logo (blue/purple neon 'RA' monogram), tagline 'Prove What Your AI Promised', and a standard Google SSO button. Minimalist, high-contrast."
+    }
+  ],
+  "images": {
+    "logo_neon_ra": {
+      "url": "logo_neon_ra",
+      "alt": "blue/purple neon 'RA' monogram with an audio waveform on a black background"
+    },
+    "home_empty_vault": {
+      "url": "home_empty_vault",
+      "dark": "home_empty_vault_dark",
+      "alt": "Minimalist vector illustration of a secure digital vault or lock, representing immutable data storage"
+    },
+    "verification_success_seal": {
+      "url": "verification_success_seal",
+      "alt": "Cryptographic checkmark seal indicating a verified SHA-256 hash"
+    }
+  },
+  "haptics": {
+    "tab_press": "light",
+    "button_press": "medium",
+    "record_start": "heavy",
+    "record_stop": "heavy",
+    "verify_success": "success",
+    "verify_fail": "error"
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color palette which leverages deep navy, charcoal, neutral gray, and a restrained indigo/blue accent as requested by the user. Do not introduce generic AI 'sparkle' purple/pink gradients.",
+    "Implement the 'Geist Mono' (or equivalent monospace) font for all Record IDs, SHA-256 hashes, timestamps, and technical identifiers. This is critical for the 'developer infrastructure / security software' aesthetic.",
+    "Component styling: Cards should have radius 'md' (12px), background 'surfaceSecondary', and a subtle 1px border. Shadows should be minimal (tier 1) or completely removed in favor of borders.",
+    "Conversation Receipt Screen: Design this to feel like an invoice or a GitHub commit. Use a distinct block (perhaps surfaceTertiary with mono text) to display the SHA-256 hash. Incorporate clear success/mismatch status banners at the top of the receipt.",
+    "Disable glassmorphism/blur entirely. Security tools prioritize clarity, contrast, and solid surfaces over cinematic translucent effects.",
+    "Layouts should follow a single-column, structured flow with labels above inputs, avoiding floating labels. Use a sticky CTA anchored at the bottom of scrollable screens like 'Metadata' and 'Create Record'.",
+    "Ensure 'Dark Mode' is highly polished. The user specifically noted the app should feel like a modern security software tool, where dark mode (using deep obsidian and charcoal) often serves as the primary visual identity."
+  ]
+}
