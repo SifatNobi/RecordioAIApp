@@ -1,0 +1,29 @@
+{
+  "summary": "Backend-only regression for the /api/transcribe bug fix. All 8 pytest cases in test_transcribe_bugfix.py PASS (12s). Real speech WAV (/tmp/sample.wav, 3.2 MB) via the external Cloudflare URL returns 200 in ~2.2s with the expected transcript ('The stale smell of old beer lingers. It takes heat to bring out the odor. A cold dip restores health and zest. A salt pickle tastes fine with ham. Tacos al pastor are my favorite. A zestful food is the hot cross bun.') and audio_sha256=971b4163... matching a locally computed SHA-256 of the file bytes. Error paths still correct: no file -> 422, text/plain -> 415, missing auth -> 401 (no 502 regression). End-to-end audio -> record flow validated: transcribe -> POST /api/records with capture_method 'Voice Recording' + agent_name 'Voice Agent' + conversation_type 'Support' + audio_sha256 -> Gemini extraction succeeded, transcript_sha256 recomputes correctly, POST /records/{id}/verify returned match=true, DELETE 200, subsequent GET 404. Seeded record RCP-2026-000001 remained untouched. Cloudflare no longer returns 502 for the previously failing multipart path.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_transcribe_bugfix.py",
+    "/app/test_reports/pytest/pytest_transcribe_bugfix.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:189-202 fix is correct: temp file written, opened with open(tmp_path, 'rb'), file handle passed to stt.transcribe, then finally-block deletes the temp file. This satisfies litellm's requirement for bytes/io.IOBase/PathLike.",
+    "Minor: audio bytes are held fully in memory (await file.read()) AND then written to a temp file that is opened again for reading — for a 25 MB cap this is fine, but a small optimisation would be to reuse an io.BytesIO wrapper instead of touching disk (would also avoid the temp-file cleanup path).",
+    "Suffix handling relies solely on the client-provided filename extension. A malicious client could send an .exe as audio; content-type is not cross-checked. Not a bug, but worth noting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_transcribe_bugfix.py (new focused regression suite for the fix)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "not tested (backend only per request)"},
+  "seed_data_creation": "Created one record inside test_end_to_end and deleted it in test_cleanup_delete. One extra record was briefly created by a manual curl during verification — verified via /api/records that only RCP-2026-000001 (seeded) remains. No lingering test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The /api/transcribe bug (str path -> litellm 502) is fixed and covered by /app/backend/tests/test_transcribe_bugfix.py. Run with `pytest backend/tests/test_transcribe_bugfix.py -o addopts= -v` (the default addopts in pytest.ini enables xdist loadscope which SPLITS class state across workers and skips the E2E chain — pass -o addopts= or add @pytest.mark.xdist_group to keep TestTranscribeRealAudio and TestE2EAudioToRecord on the same worker). /tmp/sample.wav is the canonical audio (SHA-256 971b4163670445c415c6b0fb6813c38093409ecac2f6b4d429ae3574d24ad470). Bearer token in /app/memory/test_credentials.md.",
+  "rca_of_issue": "Original bug: /api/transcribe called `await stt.transcribe(tmp_path, ...)` where tmp_path was a str. emergentintegrations forwards to litellm which validated the arg with 'Expected entry at file to be bytes, io.IOBase, PathLike or a tuple but received str' -> raised inside the try -> FastAPI returned 502 via `raise HTTPException(status_code=502, ...)` -> Cloudflare surfaced as a network/connection error on device. Fix (server.py L193-194): opened the temp file with `open(tmp_path, 'rb') as audio_file` and passed the file handle. Verified end-to-end through the external URL (2.2s round-trip, correct transcript text)."
+}

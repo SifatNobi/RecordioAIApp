@@ -190,7 +190,8 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
             tmp.write(audio_bytes)
             tmp_path = tmp.name
         stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
-        result = await stt.transcribe(tmp_path, model="whisper-1", response_format="text")
+        with open(tmp_path, "rb") as audio_file:
+            result = await stt.transcribe(audio_file, model="whisper-1", response_format="text")
         transcript = result if isinstance(result, str) else getattr(result, "text", str(result))
         transcript = (transcript or "").strip()
     except Exception as e:
