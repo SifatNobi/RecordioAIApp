@@ -76,6 +76,9 @@ export type Record = {
   transcript: string;
   transcript_sha256: string;
   audio_sha256: string;
+  language: string;
+  tags: string[];
+  notes: string;
   summary: string;
   promises: Commitment[];
   prices_or_fees: Commitment[];
@@ -95,9 +98,17 @@ export const api = {
   me: () => request<User>("/auth/me"),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   trial: () => request<Trial>("/trial"),
-  listRecords: (q?: string) =>
-    request<{ records: Record[] }>(`/records${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  listRecords: (q?: string, tag?: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (tag) params.set("tag", tag);
+    const qs = params.toString();
+    return request<{ records: Record[] }>(`/records${qs ? `?${qs}` : ""}`);
+  },
+  listTags: () => request<{ tags: string[] }>("/tags"),
   getRecord: (id: string) => request<Record>(`/records/${id}`),
+  updateRecord: (id: string, payload: { tags: string[]; notes: string }) =>
+    request<Record>(`/records/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   createRecord: (payload: {
     transcript: string;
     capture_method: string;
@@ -106,6 +117,8 @@ export const api = {
     policy_version?: string;
     conversation_type: string;
     audio_sha256?: string;
+    tags?: string[];
+    notes?: string;
   }) =>
     request<{ record: Record; trial: Trial }>("/records", {
       method: "POST",

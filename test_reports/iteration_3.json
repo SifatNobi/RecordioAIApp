@@ -1,0 +1,40 @@
+{
+  "summary": "Full backend + frontend E2E regression for iteration 3 (Language / Tags / Notes / PATCH / Retry). Backend: 12/12 pytest cases in test_language_tags_notes.py PASS (15.6s) — Spanish transcript correctly detects language='Spanish' with summary+commitments written in Spanish (accented chars, 'cancelación', 'reembolso'), transcript_sha256+verify still match; tag dedupe on POST /records is case-insensitive with first-seen casing preserved ('TEST_billing','TEST_Billing','TEST_refund','TEST_es' -> ['TEST_billing','TEST_refund','TEST_es']); notes are stored & returned; PATCH /api/records/{id} updates tags+notes, preserves transcript_sha256 and verification_status, and returns updated doc; PATCH unknown id -> 404; GET /api/tags returns sorted distinct tags; ?tag= filter returns only records containing that tag; ?q= matches on tags AND notes; DELETE still soft-deletes and returns 404 on repeat; auth still required on /records, /tags, /trial, POST /records. Frontend: Home -> Create -> Paste Transcript -> Continue -> Review & Process (agent name, Support type, tags via input+add, notes, consent) -> Process -> Conversation Receipt renders 'Language: English' row, 'Tags & Notes' card with chips (receipt-tag-*) + notes text (receipt-notes), SHA-256 block. Verify Integrity banner turns green with 'Record integrity verified'. Edit modal opens, adding tag + updating notes -> Save -> receipt reflects both (chips and notes updated live). Records tab renders a horizontal tag filter row (tag-chip-all + tag-chip-<t>); tapping a tag chip filters, All clears; records-search matches tag substrings. Record card shows chips. Record Conversation screen loads without crash (record-start visible); retry testIDs (record-transcribe-error, record-use) are present in source and rendered on the error path only (not on entry, as expected). Cleanup: RCP-2026-000007 (created during UI E2E) hard-cleaned via DELETE; only seeded RCP-2026-000001 remains. No React Native / Expo deprecation issues detected in touched files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "create/finalize.tsx addTag",
+        "issue": "Frontend addTag has case-insensitive dedupe (line 39: tags.some(x => x.toLowerCase() === t.toLowerCase())) but rapid successive taps (300ms apart) allowed 'TEST_uiTag' and 'TEST_uitag' to both appear as chips (3 chips instead of 2). Backend correctly re-dedupes on POST, so the receipt shows the right final set — user impact is only a brief mismatch in the chip preview. Likely a stale-closure race in the Pressable onPress; consider using a functional setTags(prev => ...) to guarantee dedupe.",
+        "testID": "finalize-tag-input / finalize-add-tag",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_language_tags_notes.py",
+    "/app/test_reports/pytest/pytest_iteration3.xml"
+  ],
+  "action_items": [
+    "OPTIONAL / LOW: harden create/finalize.tsx addTag to use functional setState (setTags(prev => prev.some(x=>x.toLowerCase()===t.toLowerCase()) ? prev : [...prev, t])) to eliminate the stale-closure race that allowed case-only-different duplicates to appear briefly in the chip preview. Backend already dedupes correctly, so this is UX polish only."
+  ],
+  "critical_code_review_comments": [
+    "server.py POST /records tag normalization (L320-326) and PATCH /records/{id} (L410-416) share the same dedupe pattern — consider extracting into a helper _clean_tags(list[str]) to DRY.",
+    "server.py PATCH /records/{id} correctly returns the updated doc via a second find_one after update_one, and correctly excludes _id in the projection. It also does NOT touch transcript, transcript_sha256, or verification_status — verified via test.",
+    "server.py list_records $or search regex includes {tags: rx} which works because Mongo applies the regex element-wise on array fields — confirmed by test_records_q_matches_tags.",
+    "receipt/[id].tsx correctly renders 'Language' MetaRow only when record.language is truthy (L206), and the Tags & Notes card is present with editable modal — good separation.",
+    "records.tsx tag-chip filter row + records-search both wired through the same q/tag query params — no duplication of filtering logic on the client, single source of truth is the backend query."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_language_tags_notes.py (new pytest suite for iteration 3 features)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (all E2E steps in the review request passed)"},
+  "seed_data_creation": "Created 1 backend record inside pytest suite (Spanish transcript) and deleted it in test_delete_soft_deletes. Created 1 UI record RCP-2026-000007 during Playwright E2E and cleaned it up via authenticated DELETE. Verified via GET /api/records that only seeded RCP-2026-000001 remains. Trial counter is back to used=1/limit=10.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 3 features (language detect, tags/notes CRUD + PATCH, /tags, tag+q filters, retry testIDs) all pass end-to-end. Pytest suite: /app/backend/tests/test_language_tags_notes.py — run with `pytest backend/tests/test_language_tags_notes.py -o addopts= -v` to avoid xdist splitting the sequential state (uses a shared module-level dict `state`). Frontend uses these testIDs (all present): finalize-transcript, finalize-agent-name, conv-type-{Sales|Support|Billing|Other}, finalize-tag-input, finalize-add-tag, finalize-tag-<name>, finalize-notes, finalize-consent, finalize-process; receipt-record-id, receipt-status-banner, receipt-summary, receipt-tag-<name>, receipt-notes, receipt-edit-context, receipt-verify, receipt-export; edit-tag-input, edit-add-tag, edit-notes, edit-save; records-search, tag-chip-all, tag-chip-<name>, record-card-<RID>; record-timer, record-start, record-stop, record-pause, record-resume, record-transcribe-error, record-use, record-rerecord. UI intermediate screen 'Paste Transcript' uses transcript-input + transcript-continue BEFORE finalize-*.",
+  "rca_of_issue": "N/A — no defects encountered. The lone LOW-priority observation about tag-chip dedupe race in finalize.tsx addTag is documented under frontend_issues.ui_bugs with the suggested functional-setState fix; it is masked by the backend's own case-insensitive dedupe so end-user impact is nil."
+}

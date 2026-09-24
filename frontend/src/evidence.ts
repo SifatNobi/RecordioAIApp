@@ -83,7 +83,11 @@ export function buildEvidenceHtml(record: Record, verified: boolean): string {
     ${record.agent_version ? `<tr><td class="k">Agent Version</td><td class="v">${esc(record.agent_version)}</td></tr>` : ""}
     ${record.policy_version ? `<tr><td class="k">Policy Version</td><td class="v">${esc(record.policy_version)}</td></tr>` : ""}
     <tr><td class="k">Conversation Type</td><td class="v">${esc(record.conversation_type)}</td></tr>
+    ${record.language ? `<tr><td class="k">Language</td><td class="v">${esc(record.language)}</td></tr>` : ""}
+    ${record.tags && record.tags.length ? `<tr><td class="k">Tags</td><td class="v">${esc(record.tags.join(", "))}</td></tr>` : ""}
   </table>
+
+  ${record.notes ? `<h2>Notes</h2><div class="summary">${esc(record.notes)}</div>` : ""}
 
   <h2>Executive Summary</h2>
   <div class="summary">${esc(record.summary || "No summary available.")}</div>

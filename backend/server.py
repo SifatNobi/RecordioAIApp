@@ -57,6 +57,7 @@ class Commitment(BaseModel):
 
 class Extraction(BaseModel):
     overall_summary: str = ""
+    language: str = ""
     promises: List[Commitment] = Field(default_factory=list)
     prices_or_fees: List[Commitment] = Field(default_factory=list)
     dates_or_deadlines: List[Commitment] = Field(default_factory=list)
@@ -72,6 +73,13 @@ class RecordCreate(BaseModel):
     policy_version: Optional[str] = ""
     conversation_type: str  # Sales | Support | Billing | Other
     audio_sha256: Optional[str] = ""
+    tags: List[str] = Field(default_factory=list)
+    notes: Optional[str] = ""
+
+
+class RecordUpdate(BaseModel):
+    tags: List[str] = Field(default_factory=list)
+    notes: Optional[str] = ""
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +233,8 @@ def _extraction_prompt(transcript: str) -> str:
     return (
         "Extract structured commitments from the transcript below. Return a JSON object "
         "with EXACTLY these keys:\n"
+        '- "language": the English name of the language the conversation is written in '
+        '(e.g. "English", "Spanish", "French", "German", "Portuguese").\n'
         '- "overall_summary": one concise factual sentence summarising what was promised. '
         "If nothing was promised, say so plainly. Never invent promises.\n"
         '- "promises": array of general commitments/promises made.\n'
@@ -237,8 +247,10 @@ def _extraction_prompt(transcript: str) -> str:
         '"commitment" (a short plain-language statement of what was committed), '
         '"quote" (the exact verbatim supporting sentence from the transcript), '
         '"speaker" (who said it if confidently identifiable, else empty string).\n\n'
-        "Rules: Only include items explicitly present. Empty array if none. Do NOT infer. "
-        "Copy quotes verbatim.\n\n"
+        "IMPORTANT: Write the \"overall_summary\", every \"category\" and every \"commitment\" "
+        "in the SAME language as the conversation. Keep each \"quote\" verbatim in the "
+        "original language.\n"
+        "Rules: Only include items explicitly present. Empty array if none. Do NOT infer.\n\n"
         "TRANSCRIPT:\n\"\"\"\n" + transcript + "\n\"\"\""
     )
 
@@ -305,6 +317,14 @@ async def create_record(body: RecordCreate, user=Depends(get_current_user)):
     record_id = await _next_record_id()
     now = datetime.now(timezone.utc)
 
+    clean_tags = []
+    seen = set()
+    for t in (body.tags or []):
+        tag = t.strip()
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            clean_tags.append(tag)
+
     record = {
         "record_id": record_id,
         "user_id": user["user_id"],
@@ -317,6 +337,9 @@ async def create_record(body: RecordCreate, user=Depends(get_current_user)):
         "transcript": transcript,
         "transcript_sha256": transcript_sha256,
         "audio_sha256": (body.audio_sha256 or "").strip(),
+        "language": extraction.language,
+        "tags": clean_tags,
+        "notes": (body.notes or "").strip(),
         "summary": extraction.overall_summary,
         "promises": [c.model_dump() for c in extraction.promises],
         "prices_or_fees": [c.model_dump() for c in extraction.prices_or_fees],
@@ -334,14 +357,22 @@ async def create_record(body: RecordCreate, user=Depends(get_current_user)):
 
 
 @api.get("/records")
-async def list_records(q: Optional[str] = None, user=Depends(get_current_user)):
+async def list_records(q: Optional[str] = None, tag: Optional[str] = None, user=Depends(get_current_user)):
     query = {"user_id": user["user_id"], "deleted_at": None}
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
-        query["$or"] = [{"agent_name": rx}, {"record_id": rx}, {"summary": rx}]
+        query["$or"] = [{"agent_name": rx}, {"record_id": rx}, {"summary": rx}, {"tags": rx}, {"notes": rx}]
+    if tag:
+        query["tags"] = tag
     cursor = db.records.find(query, {"_id": 0}).sort("created_at", -1)
     records = await cursor.to_list(500)
     return {"records": records}
+
+
+@api.get("/tags")
+async def list_tags(user=Depends(get_current_user)):
+    tags = await db.records.distinct("tags", {"user_id": user["user_id"], "deleted_at": None})
+    return {"tags": sorted([t for t in tags if t])}
 
 
 @api.get("/records/{record_id}")
@@ -372,6 +403,25 @@ async def verify_record(record_id: str, user=Depends(get_current_user)):
         "recomputed_hash": recomputed,
         "verified_at": now,
     }
+
+
+@api.patch("/records/{record_id}")
+async def update_record(record_id: str, body: RecordUpdate, user=Depends(get_current_user)):
+    clean_tags = []
+    seen = set()
+    for t in (body.tags or []):
+        tag = t.strip()
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            clean_tags.append(tag)
+    res = await db.records.update_one(
+        {"record_id": record_id, "user_id": user["user_id"], "deleted_at": None},
+        {"$set": {"tags": clean_tags, "notes": (body.notes or "").strip()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Record not found")
+    rec = await db.records.find_one({"record_id": record_id, "user_id": user["user_id"]}, {"_id": 0})
+    return rec
 
 
 @api.delete("/records/{record_id}")

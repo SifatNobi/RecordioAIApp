@@ -4,7 +4,7 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CheckSquare, Square, ShieldCheck } from "phosphor-react-native";
+import { CheckSquare, Square, ShieldCheck, Plus, X } from "phosphor-react-native";
 
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
 import { AppHeader, Button, SectionLabel, Badge } from "@/src/components/ui";
@@ -27,8 +27,19 @@ export default function Finalize() {
   const [agentVersion, setAgentVersion] = useState("");
   const [policyVersion, setPolicyVersion] = useState("");
   const [convType, setConvType] = useState<ConversationType>("Support");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [notes, setNotes] = useState("");
   const [consent, setConsent] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t) return;
+    setTags((prev) => (prev.some((x) => x.toLowerCase() === t.toLowerCase()) ? prev : [...prev, t]));
+    setTagInput("");
+  };
+  const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
 
   const canProcess = transcript.trim().length >= 10 && agentName.trim().length > 0 && consent && !processing;
 
@@ -49,6 +60,8 @@ export default function Finalize() {
         policy_version: policyVersion.trim(),
         conversation_type: convType,
         audio_sha256: draft.audio_sha256,
+        tags,
+        notes: notes.trim(),
       });
       await qc.invalidateQueries({ queryKey: ["records"] });
       await qc.invalidateQueries({ queryKey: ["trial"] });
@@ -150,6 +163,48 @@ export default function Finalize() {
                 );
               })}
             </View>
+          </Field>
+
+          <Field label="Tags (optional)">
+            <View style={styles.tagInputRow}>
+              <TextInput
+                testID="finalize-tag-input"
+                value={tagInput}
+                onChangeText={setTagInput}
+                onSubmitEditing={addTag}
+                placeholder="Add a tag, e.g. vip"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                returnKeyType="done"
+                style={styles.tagInput}
+              />
+              <Pressable testID="finalize-add-tag" onPress={addTag} style={styles.tagAddBtn}>
+                <Plus color={colors.onBrandPrimary} size={18} weight="bold" />
+              </Pressable>
+            </View>
+            {tags.length > 0 && (
+              <View style={styles.tagWrap}>
+                {tags.map((t) => (
+                  <Pressable key={t} testID={`finalize-tag-${t}`} onPress={() => removeTag(t)} style={styles.tagChip}>
+                    <Text style={styles.tagChipText}>{t}</Text>
+                    <X color={colors.onBrandTertiary} size={12} weight="bold" />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </Field>
+
+          <Field label="Notes (optional)">
+            <TextInput
+              testID="finalize-notes"
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              textAlignVertical="top"
+              placeholder="Internal notes for this record…"
+              placeholderTextColor={colors.muted}
+              style={styles.notesInput}
+            />
           </Field>
         </View>
 
@@ -260,6 +315,49 @@ const useStyles = makeStyles((colors) => ({
   segmentItemActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   segmentText: { color: colors.onSurfaceTertiary, fontFamily: fonts.medium, fontSize: fontSize.sm },
   segmentTextActive: { color: colors.onBrandPrimary, fontFamily: fonts.semibold },
+  tagInputRow: { flexDirection: "row", gap: spacing.sm },
+  tagInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceSecondary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 48,
+    color: colors.onSurface,
+    fontFamily: fonts.regular,
+    fontSize: fontSize.lg,
+  },
+  tagAddBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  tagChipText: { color: colors.onBrandTertiary, fontFamily: fonts.medium, fontSize: fontSize.sm },
+  notesInput: {
+    minHeight: 90,
+    backgroundColor: colors.surfaceSecondary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.onSurface,
+    fontFamily: fonts.regular,
+    fontSize: fontSize.lg,
+  },
   consentCard: {
     flexDirection: "row",
     gap: spacing.md,

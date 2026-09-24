@@ -20,6 +20,7 @@ import {
   CheckSquare,
   Square,
   Gear,
+  ArrowsClockwise,
 } from "phosphor-react-native";
 
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
@@ -50,6 +51,7 @@ export default function PhoneScreen() {
   const [number, setNumber] = useState("");
   const [consent, setConsent] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   // Honest runtime capability: two-sided cellular audio is not available to
   // third-party Expo apps. Web has no telephony at all.
@@ -116,6 +118,7 @@ export default function PhoneScreen() {
       toast.show("No recording found. Please record again.", "error");
       return;
     }
+    setTranscribeError(null);
     setStep("transcribing");
     try {
       const name = Platform.OS === "web" ? "call.webm" : "call.m4a";
@@ -125,7 +128,7 @@ export default function PhoneScreen() {
       router.push("/create/finalize");
     } catch (e: any) {
       setStep("stopped");
-      toast.show(e?.message || "Transcription failed.", "error");
+      setTranscribeError(e?.message || "Transcription failed. Your recording was kept — tap retry.");
     }
   };
 
@@ -241,13 +244,29 @@ export default function PhoneScreen() {
 
         {step === "stopped" && (
           <View style={{ gap: spacing.md }}>
+            {transcribeError && (
+              <Card style={styles.errCard} testID="phone-transcribe-error">
+                <View style={styles.errHead}>
+                  <Warning color={colors.error} size={18} weight="fill" />
+                  <Text style={styles.capTitle}>Transcription failed</Text>
+                </View>
+                <Text style={styles.capBody}>{transcribeError}</Text>
+                <Text style={styles.errNote}>Your recording was kept. You can retry without recording again.</Text>
+              </Card>
+            )}
             <Button
-              label="Use Recording"
+              label={transcribeError ? "Retry Transcription" : "Use Recording"}
               testID="phone-use"
-              icon={<ArrowRight color={colors.onBrandPrimary} size={18} weight="bold" />}
+              icon={
+                transcribeError ? (
+                  <ArrowsClockwise color={colors.onBrandPrimary} size={18} weight="bold" />
+                ) : (
+                  <ArrowRight color={colors.onBrandPrimary} size={18} weight="bold" />
+                )
+              }
               onPress={useRecording}
             />
-            <Button label="Discard" variant="secondary" testID="phone-discard" onPress={() => setStep("capability")} />
+            <Button label="Discard" variant="secondary" testID="phone-discard" onPress={() => { setTranscribeError(null); setStep("capability"); }} />
           </View>
         )}
 
@@ -281,6 +300,8 @@ const useStyles = makeStyles((colors) => ({
   consentText: { flex: 1, color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
   capCard: { gap: spacing.sm, borderColor: colors.warning },
   warnCard: { gap: spacing.sm, borderColor: colors.warning },
+  errCard: { gap: spacing.xs, borderColor: colors.error },
+  errNote: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm },
   capHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   capTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: fontSize.lg },
   capBody: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },

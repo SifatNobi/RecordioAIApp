@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,10 @@ import {
   SealCheck,
   Export,
   Quotes,
+  PencilSimple,
+  Tag,
+  Plus,
+  X,
 } from "phosphor-react-native";
 
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
@@ -43,6 +47,10 @@ export default function Receipt() {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const recordQ = useQuery({ queryKey: ["record", id], queryFn: () => api.getRecord(id!) , enabled: !!id });
   const record = recordQ.data;
@@ -71,6 +79,31 @@ export default function Receipt() {
     },
     onError: (e: any) => toast.show(e?.message || "Delete failed.", "error"),
   });
+
+  const editMut = useMutation({
+    mutationFn: () => api.updateRecord(id!, { tags: editTags, notes: editNotes.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["record", id] });
+      qc.invalidateQueries({ queryKey: ["records"] });
+      qc.invalidateQueries({ queryKey: ["tags"] });
+      setEditOpen(false);
+      toast.show("Tags & notes updated.", "success");
+    },
+    onError: (e: any) => toast.show(e?.message || "Update failed.", "error"),
+  });
+
+  const openEdit = () => {
+    setEditTags(record?.tags ?? []);
+    setEditNotes(record?.notes ?? "");
+    setEditTagInput("");
+    setEditOpen(true);
+  };
+  const addEditTag = () => {
+    const t = editTagInput.trim();
+    if (!t) return;
+    if (!editTags.some((x) => x.toLowerCase() === t.toLowerCase())) setEditTags([...editTags, t]);
+    setEditTagInput("");
+  };
 
   const verified = (verifyMut.data?.verification_status || record?.verification_status) === "verified";
   const verifiedThisSession = !!verifyMut.data;
@@ -170,6 +203,7 @@ export default function Receipt() {
           <MetaRow label="Agent" value={record.agent_name} />
           {!!record.agent_version && <MetaRow label="Agent Version" value={record.agent_version} />}
           {!!record.policy_version && <MetaRow label="Policy Version" value={record.policy_version} />}
+          {!!record.language && <MetaRow label="Language" value={record.language} />}
         </Card>
 
         {/* Executive summary */}
@@ -179,6 +213,32 @@ export default function Receipt() {
             <Text style={styles.summary} testID="receipt-summary">
               {record.summary || "No summary available."}
             </Text>
+          </Card>
+        </View>
+
+        {/* Tags & notes */}
+        <View>
+          <View style={styles.rowBetween}>
+            <SectionLabel>Tags & Notes</SectionLabel>
+            <Pressable testID="receipt-edit-context" onPress={openEdit} style={styles.editBtn} hitSlop={8}>
+              <PencilSimple color={colors.brand} size={15} weight="bold" />
+              <Text style={styles.editText}>Edit</Text>
+            </Pressable>
+          </View>
+          <Card style={{ gap: spacing.md }}>
+            {record.tags.length > 0 ? (
+              <View style={styles.tagWrap}>
+                {record.tags.map((t) => (
+                  <View key={t} style={styles.tagChip} testID={`receipt-tag-${t}`}>
+                    <Tag color={colors.onBrandTertiary} size={12} weight="fill" />
+                    <Text style={styles.tagChipText}>{t}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyCtx}>No tags yet.</Text>
+            )}
+            {!!record.notes && <Text style={styles.notesText} testID="receipt-notes">{record.notes}</Text>}
           </Card>
         </View>
 
@@ -278,6 +338,55 @@ export default function Receipt() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit tags & notes */}
+      <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
+        <View style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit tags & notes</Text>
+            <View style={styles.editTagRow}>
+              <TextInput
+                testID="edit-tag-input"
+                value={editTagInput}
+                onChangeText={setEditTagInput}
+                onSubmitEditing={addEditTag}
+                placeholder="Add a tag"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                returnKeyType="done"
+                style={styles.editInput}
+              />
+              <Pressable testID="edit-add-tag" onPress={addEditTag} style={styles.editAddBtn}>
+                <Plus color={colors.onBrandPrimary} size={18} weight="bold" />
+              </Pressable>
+            </View>
+            {editTags.length > 0 && (
+              <View style={styles.tagWrap}>
+                {editTags.map((t) => (
+                  <Pressable key={t} onPress={() => setEditTags(editTags.filter((x) => x !== t))} style={styles.tagChip}>
+                    <Text style={styles.tagChipText}>{t}</Text>
+                    <X color={colors.onBrandTertiary} size={12} weight="bold" />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <TextInput
+              testID="edit-notes"
+              value={editNotes}
+              onChangeText={setEditNotes}
+              multiline
+              textAlignVertical="top"
+              placeholder="Notes…"
+              placeholderTextColor={colors.muted}
+              style={styles.editNotes}
+            />
+            <View style={styles.modalBtns}>
+              <Button label="Cancel" variant="secondary" onPress={() => setEditOpen(false)} style={{ flex: 1 }} />
+              <Button label="Save" testID="edit-save" loading={editMut.isPending} onPress={() => editMut.mutate()} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -346,6 +455,53 @@ const useStyles = makeStyles((colors) => ({
   metaLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.base },
   metaValue: { color: colors.onSurface, fontFamily: fonts.medium, fontSize: fontSize.base, flex: 1, textAlign: "right" },
   summary: { color: colors.onSurface, fontFamily: fonts.regular, fontSize: fontSize.lg, lineHeight: 24 },
+  editBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  editText: { color: colors.brand, fontFamily: fonts.semibold, fontSize: fontSize.sm },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  tagChipText: { color: colors.onBrandTertiary, fontFamily: fonts.medium, fontSize: fontSize.sm },
+  emptyCtx: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.base },
+  notesText: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
+  editTagRow: { flexDirection: "row", gap: spacing.sm },
+  editInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceTertiary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 46,
+    color: colors.onSurface,
+    fontFamily: fonts.regular,
+    fontSize: fontSize.base,
+  },
+  editAddBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editNotes: {
+    minHeight: 80,
+    backgroundColor: colors.surfaceTertiary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.onSurface,
+    fontFamily: fonts.regular,
+    fontSize: fontSize.base,
+  },
   countPill: { color: colors.brand, fontFamily: fonts.monoMedium, fontSize: fontSize.base },
   emptyCommit: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
   commitTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

@@ -39,7 +39,18 @@ verification, no pretending unsupported call recording works.
    placeholder plans (no payments).
 9. Completely empty for a new user; everything generated from real input.
 
-## Implemented (2026-09-24)
+## Implemented (2026-09-24 — iteration 2)
+- ✅ Fixed transcription bug (Whisper received a file handle, not a string path) — recording & call
+  transcription now work end-to-end.
+- ✅ **Language Support**: Whisper auto-detects language; Gemini returns a `language` field and writes
+  the summary/commitments in the conversation's language; shown on the receipt + evidence PDF.
+- ✅ **Record Tags & Notes**: optional tags + notes on create, editable on the receipt (PATCH), shown
+  on cards/receipt/PDF, searchable, and filterable via a tag chip row on the Records tab (`GET /api/tags`).
+- ✅ **Evidence Sharing**: Export Evidence opens the native share sheet (email/AirDrop) on device.
+- ✅ **Retry On Fail**: mic + phone screens keep the recording and offer one-tap "Retry Transcription".
+- ✅ 12/12 new backend tests + full frontend E2E passing.
+
+## Implemented (2026-09-24 — iteration 1)
 - ✅ Google login screen + Emergent OAuth flow (mobile deep-link + web).
 - ✅ Home dashboard: tagline, trial pill, Create/View actions, recent records, empty state, why-it-matters.
 - ✅ Create flow: method selection → record (expo-audio, permissions handled) / phone

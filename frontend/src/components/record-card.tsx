@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 import { CaretRight, ShieldCheck, WarningCircle } from "phosphor-react-native";
 
 import { Card, Badge } from "@/src/components/ui";
-import { makeStyles, useTheme, fonts, spacing, fontSize } from "@/src/theme";
+import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
 import { Record } from "@/src/api";
 import { formatDate, conversationTone } from "@/src/format";
 
@@ -30,6 +30,17 @@ export function RecordCard({ record, onPress }: { record: Record; onPress: () =>
         {record.summary || "No summary available."}
       </Text>
 
+      {record.tags && record.tags.length > 0 && (
+        <View style={styles.tagRow}>
+          {record.tags.slice(0, 3).map((t) => (
+            <View key={t} style={styles.tagChip}>
+              <Text style={styles.tagChipText}>{t}</Text>
+            </View>
+          ))}
+          {record.tags.length > 3 && <Text style={styles.tagMore}>+{record.tags.length - 3}</Text>}
+        </View>
+      )}
+
       <View style={styles.metaRow}>
         <Badge label={record.conversation_type} tone={conversationTone(record.conversation_type)} />
         <Text style={styles.meta}>{record.agent_name}</Text>
@@ -49,6 +60,15 @@ const useStyles = makeStyles((colors) => ({
   statusRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   statusText: { fontFamily: fonts.medium, fontSize: fontSize.sm },
   summary: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
+  tagRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.xs },
+  tagChip: {
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.sm,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+  },
+  tagChipText: { color: colors.onBrandTertiary, fontFamily: fonts.medium, fontSize: 11 },
+  tagMore: { color: colors.muted, fontFamily: fonts.medium, fontSize: 11 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm },
   dot: { color: colors.muted, fontSize: fontSize.sm },

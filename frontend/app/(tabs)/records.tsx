@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,20 +17,24 @@ export default function Records() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [tag, setTag] = useState<string | null>(null);
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
 
   const recordsQ = useQuery({
-    queryKey: ["records", q],
-    queryFn: () => api.listRecords(q.trim() || undefined),
+    queryKey: ["records", q, tag],
+    queryFn: () => api.listRecords(q.trim() || undefined, tag || undefined),
   });
+  const tagsQ = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
 
   useFocusEffect(
     useCallback(() => {
       recordsQ.refetch();
+      tagsQ.refetch();
     }, []),
   );
 
   const records = recordsQ.data?.records ?? [];
+  const tags = tagsQ.data?.tags ?? [];
 
   return (
     <View style={styles.screen}>
@@ -42,13 +46,42 @@ export default function Records() {
             testID="records-search"
             value={q}
             onChangeText={setQ}
-            placeholder="Search agent, ID or summary"
+            placeholder="Search agent, ID, tag or summary"
             placeholderTextColor={colors.muted}
             style={styles.searchInput}
             autoCapitalize="none"
             returnKeyType="search"
           />
         </View>
+        {tags.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRowContent}
+            style={styles.chipRow}
+          >
+            <Pressable
+              testID="tag-chip-all"
+              onPress={() => setTag(null)}
+              style={[styles.chip, !tag && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, !tag && styles.chipTextActive]}>All</Text>
+            </Pressable>
+            {tags.map((t) => {
+              const active = tag === t;
+              return (
+                <Pressable
+                  key={t}
+                  testID={`tag-chip-${t}`}
+                  onPress={() => setTag(active ? null : t)}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{t}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       {recordsQ.isLoading ? (
@@ -113,6 +146,22 @@ const useStyles = makeStyles((colors) => ({
     height: 46,
   },
   searchInput: { flex: 1, color: colors.onSurface, fontFamily: fonts.regular, fontSize: fontSize.base, height: "100%" },
+  chipRow: { marginHorizontal: -spacing.lg },
+  chipRowContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: "center" },
+  chip: {
+    flexShrink: 0,
+    height: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  chipText: { color: colors.onSurfaceTertiary, fontFamily: fonts.medium, fontSize: fontSize.sm },
+  chipTextActive: { color: colors.onBrandPrimary, fontFamily: fonts.semibold },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xl, marginTop: spacing.xl },
   emptyIcon: {

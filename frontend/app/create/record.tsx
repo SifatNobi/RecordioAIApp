@@ -10,7 +10,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Microphone, Pause, Play, Stop, Trash, ArrowRight, Gear } from "phosphor-react-native";
+import { Microphone, Pause, Play, Stop, Trash, ArrowRight, Gear, WarningCircle, ArrowsClockwise } from "phosphor-react-native";
 
 import { makeStyles, useTheme, fonts, spacing, fontSize, radius } from "@/src/theme";
 import { AppHeader, Button, Card } from "@/src/components/ui";
@@ -41,6 +41,7 @@ export default function RecordScreen() {
   const state = useAudioRecorderState(recorder);
   const [phase, setPhase] = useState<Phase>("idle");
   const [perm, setPerm] = useState<PermState>("unknown");
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -99,7 +100,10 @@ export default function RecordScreen() {
       toast.show("Failed to stop recording.", "error");
     }
   };
-  const reset = () => setPhase("idle");
+  const reset = () => {
+    setTranscribeError(null);
+    setPhase("idle");
+  };
 
   const useRecording = async () => {
     const uri = recorder.uri;
@@ -107,6 +111,7 @@ export default function RecordScreen() {
       toast.show("No recording found. Please record again.", "error");
       return;
     }
+    setTranscribeError(null);
     setPhase("transcribing");
     try {
       const name = Platform.OS === "web" ? "recording.webm" : "recording.m4a";
@@ -120,7 +125,7 @@ export default function RecordScreen() {
       router.push("/create/finalize");
     } catch (e: any) {
       setPhase("stopped");
-      toast.show(e?.message || "Transcription failed. Try again or paste the transcript.", "error");
+      setTranscribeError(e?.message || "Transcription failed. Your recording was kept — tap retry.");
     }
   };
 
@@ -208,10 +213,26 @@ export default function RecordScreen() {
 
         {phase === "stopped" && (
           <View style={{ gap: spacing.md }}>
+            {transcribeError && (
+              <Card style={styles.errCard} testID="record-transcribe-error">
+                <View style={styles.errHead}>
+                  <WarningCircle color={colors.error} size={18} weight="fill" />
+                  <Text style={styles.errTitle}>Transcription failed</Text>
+                </View>
+                <Text style={styles.errText}>{transcribeError}</Text>
+                <Text style={styles.errNote}>Your recording was kept. You can retry without recording again.</Text>
+              </Card>
+            )}
             <Button
-              label="Use Recording"
+              label={transcribeError ? "Retry Transcription" : "Use Recording"}
               testID="record-use"
-              icon={<ArrowRight color={colors.onBrandPrimary} size={18} weight="bold" />}
+              icon={
+                transcribeError ? (
+                  <ArrowsClockwise color={colors.onBrandPrimary} size={18} weight="bold" />
+                ) : (
+                  <ArrowRight color={colors.onBrandPrimary} size={18} weight="bold" />
+                )
+              }
               onPress={useRecording}
             />
             <Button
@@ -274,6 +295,11 @@ const useStyles = makeStyles((colors) => ({
   settingsBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start" },
   settingsText: { color: colors.brand, fontFamily: fonts.semibold, fontSize: fontSize.base },
   deniedNote: { color: colors.warning, fontFamily: fonts.regular, fontSize: fontSize.base, textAlign: "center" },
+  errCard: { gap: spacing.xs, borderColor: colors.error },
+  errHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  errTitle: { color: colors.error, fontFamily: fonts.semibold, fontSize: fontSize.base },
+  errText: { color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: fontSize.base, lineHeight: 20 },
+  errNote: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm },
   transcribing: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   transcribingText: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: fontSize.base },
   note: { color: colors.muted, fontFamily: fonts.regular, fontSize: fontSize.sm, lineHeight: 18 },
