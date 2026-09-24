@@ -9,8 +9,8 @@ on:
     types: [published]
 
 permissions:
-  contents: read
-  packages: write
+  contents: write
+  packages: read
 
 jobs:
   validate:
@@ -40,6 +40,8 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'release'
+    env:
+      CI: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -56,6 +58,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -65,20 +70,27 @@ jobs:
           expo-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Configure Android signing
-        if: env.ANDROID_KEYSTORE != ''
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android.keystore
-          echo "storeFile=android.keystore" >> android/gradle.properties
-          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/gradle.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/gradle.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/gradle.properties
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build Android APK
+      - name: Build Android APK (release)
         run: |
-          npx expo prebuild --platform android --clean
           cd android
           ./gradlew assembleRelease --no-daemon
+
+      - name: Verify release APK is self-contained
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "::error::release APK not found at $APK"; exit 1; }
+          SIZE=$(stat -c%s "$APK")
+          test "$SIZE" -gt 10000000 || { echo "::error::release APK too small ($SIZE bytes)"; exit 1; }
+          echo "APK size: $SIZE bytes (OK)"
+          if unzip -p "$APK" assets/index.android.bundle > /dev/null 2>&1; then
+            echo "Verified: assets/index.android.bundle is packaged inside the APK"
+          else
+            echo "::error::assets/index.android.bundle is MISSING from the APK - release would need Metro"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -89,7 +101,7 @@ jobs:
 
       - name: Upload APK to Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: android/app/build/outputs/apk/release/app-release.apk
           body: |
@@ -112,6 +124,8 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    env:
+      CI: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,6 +142,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -137,20 +154,27 @@ jobs:
           expo-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Configure Android signing
-        if: env.ANDROID_KEYSTORE != ''
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android.keystore
-          echo "storeFile=android.keystore" >> android/gradle.properties
-          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> android/gradle.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/gradle.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/gradle.properties
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build Android AAB
+      - name: Build Android AAB (release)
         run: |
-          npx expo prebuild --platform android --clean
           cd android
           ./gradlew bundleRelease --no-daemon
+
+      - name: Verify release AAB is self-contained
+        run: |
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -f "$AAB" || { echo "::error::release AAB not found at $AAB"; exit 1; }
+          SIZE=$(stat -c%s "$AAB")
+          test "$SIZE" -gt 10000000 || { echo "::error::release AAB too small ($SIZE bytes)"; exit 1; }
+          echo "AAB size: $SIZE bytes (OK)"
+          if unzip -l "$AAB" 2>/dev/null | grep -q "assets/index.android.bundle"; then
+            echo "Verified: assets/index.android.bundle is packaged inside the AAB"
+          else
+            echo "::error::assets/index.android.bundle is MISSING from the AAB - release would need Metro"
+            exit 1
+          fi
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
