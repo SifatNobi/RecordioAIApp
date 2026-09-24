@@ -36,7 +36,7 @@ jobs:
         run: npx expo lint
 
   build-android:
-    name: Build Android APK
+    name: Build Android Test APK (debug + Test Store)
     needs: validate
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'release'
@@ -73,112 +73,53 @@ jobs:
       - name: Generate the native Android project
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build Android APK (release)
+      - name: Build Android Test APK (debug)
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Verify release APK is self-contained
+      - name: Verify debug test APK is self-contained
         run: |
-          APK=android/app/build/outputs/apk/release/app-release.apk
-          test -f "$APK" || { echo "::error::release APK not found at $APK"; exit 1; }
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK" || { echo "::error::debug APK not found at $APK"; exit 1; }
           SIZE=$(stat -c%s "$APK")
-          test "$SIZE" -gt 10000000 || { echo "::error::release APK too small ($SIZE bytes)"; exit 1; }
+          test "$SIZE" -gt 10000000 || { echo "::error::debug APK too small ($SIZE bytes)"; exit 1; }
           echo "APK size: $SIZE bytes (OK)"
           if unzip -p "$APK" assets/index.android.bundle > /dev/null 2>&1; then
-            echo "Verified: assets/index.android.bundle is packaged inside the APK"
+            echo "Verified: assets/index.android.bundle is packaged inside the debug APK (runs WITHOUT Metro)"
           else
-            echo "::error::assets/index.android.bundle is MISSING from the APK - release would need Metro"
+            echo "::error::assets/index.android.bundle is MISSING from the debug APK - it would require Metro"
             exit 1
           fi
 
-      - name: Upload APK artifact
+      - name: Name the test APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk RecordioAI-debug-teststore.apk
+
+      - name: Upload test APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RecordioAI-Android-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: RecordioAI-debug-teststore
+          path: RecordioAI-debug-teststore.apk
           retention-days: 30
 
-      - name: Upload APK to Release
+      - name: Upload test APK to Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: RecordioAI-debug-teststore.apk
           body: |
-            ## RecordioAI Android Release
-            
+            ## RecordioAI Android Test Store Build
+
             ### Installation
             1. Download the APK file
             2. Enable "Install unknown apps" in Android settings
             3. Open the APK to install
-            
-            ### Changes
-            See [CHANGELOG.md](CHANGELOG.md) for details.
+
+            ### Notes
+            This is a DEBUG/Test Store build using the RevenueCat **Test Store** API key
+            (`test_*`). Test purchases are simulated and generate no revenue.
+            The APK is self-contained (no Metro / localhost connection required).
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-aab:
-    name: Build Android AAB (Release)
-    needs: validate
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    env:
-      CI: '1'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Setup Expo
-        uses: expo/expo-github-action@v8
-        with:
-          expo-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Generate the native Android project
-        run: npx expo prebuild --platform android --clean --no-install
-
-      - name: Build Android AAB (release)
-        run: |
-          cd android
-          ./gradlew bundleRelease --no-daemon
-
-      - name: Verify release AAB is self-contained
-        run: |
-          AAB=android/app/build/outputs/bundle/release/app-release.aab
-          test -f "$AAB" || { echo "::error::release AAB not found at $AAB"; exit 1; }
-          SIZE=$(stat -c%s "$AAB")
-          test "$SIZE" -gt 10000000 || { echo "::error::release AAB too small ($SIZE bytes)"; exit 1; }
-          echo "AAB size: $SIZE bytes (OK)"
-          if unzip -l "$AAB" 2>/dev/null | grep -q "assets/index.android.bundle"; then
-            echo "Verified: assets/index.android.bundle is packaged inside the AAB"
-          else
-            echo "::error::assets/index.android.bundle is MISSING from the AAB - release would need Metro"
-            exit 1
-          fi
-
-      - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RecordioAI-Android-AAB
-          path: android/app/build/outputs/bundle/release/app-release.aab
-          retention-days: 30
