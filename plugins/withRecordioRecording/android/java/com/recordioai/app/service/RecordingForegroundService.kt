@@ -67,7 +67,14 @@ class RecordingForegroundService : Service() {
     private var isRecording = false
     private var isPaused = false
     private var recordingType = "conversation"
-    private val updateRunnable = Runnable { updateNotification() }
+    private val updateRunnable = object : Runnable {
+        override fun run() {
+            updateNotification()
+            if (isRecording) {
+                handler.postDelayed(this, 1000)
+            }
+        }
+    }
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun onCreate() {

@@ -44,14 +44,14 @@ const withRecordingPermissions = (config) =>
       }
 
       const hasService = application.service.some(
-        (service) => service.$?.['android:name'] === '.RecordingForegroundService'
+        (service) => service.$?.['android:name'] === '.service.RecordingForegroundService'
       );
 
       if (!hasService) {
         application.service.push({
           $: {
-            'android:name': '.RecordingForegroundService',
-            'android:foregroundServiceType': 'microphone|mediaProjection',
+            'android:name': '.service.RecordingForegroundService',
+            'android:foregroundServiceType': 'microphone',
             'android:exported': 'false',
           },
         });
