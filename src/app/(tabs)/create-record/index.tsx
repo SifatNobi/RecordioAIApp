@@ -5,6 +5,7 @@ import { H1, H3, Body } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -19,6 +20,7 @@ interface RecordOption {
 
 export default function CreateRecordScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleRecordConversation = () => {
     router.push('/create-record/record-conversation');
@@ -62,7 +64,7 @@ export default function CreateRecordScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">Create Record</H1>

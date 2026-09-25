@@ -12,11 +12,13 @@ import { Input } from '@/components/Input';
 import { useAppStore } from '@/store/appStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Conversation, ConversationStatus, ProcessingStatus } from '@/types';
 
 export default function ConversationsScreen() {
   const { conversations } = useAppStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<ConversationStatus | ProcessingStatus | 'all'>('all');
 
@@ -57,7 +59,7 @@ export default function ConversationsScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
       refreshControl={
         <RefreshControl
           refreshing={false}

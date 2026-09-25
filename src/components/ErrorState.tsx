@@ -3,6 +3,7 @@ import { View, ViewProps, ViewStyle, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { Typography } from './Typography';
 import { Button } from './Button';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ErrorStateProps extends ViewProps {
   title?: string;
@@ -16,7 +17,7 @@ interface ErrorStateProps extends ViewProps {
 
 export const ErrorState = React.forwardRef<View, ErrorStateProps>(({ title = 'Something went wrong', message, code, onRetry, onDismiss, showRetry = true, showDismiss = false, style, ...props }, ref) => (
   <View ref={ref} style={[styles.container, style]} {...props}>
-    <View style={styles.iconWrapper}><Typography variant="h1" weight="bold" color="error" style={styles.errorIcon}>⚠</Typography></View>
+    <View style={styles.iconWrapper}><Ionicons name="warning" size={32} color={Theme.colors.error} /></View>
     <Typography variant="h3" weight="semiBold" color="textPrimary" style={styles.title}>{title}</Typography>
     {message && <Typography variant="body" color="textSecondary" style={styles.message}>{message}</Typography>}
     {code && <Typography variant="mono" color="textMuted" style={styles.code}>{code}</Typography>}

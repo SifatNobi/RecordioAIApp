@@ -1,20 +1,52 @@
-import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ScrollView, StyleSheet, Linking, AppState } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, H4, Body, Caption, Overline } from '@/components/Typography';
-import { Card, CardContent } from '@/components/Card';
+import { H1, H2, H3, H4, Body, Caption } from '@/components/Typography';
+import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Separator } from '@/components/Separator';
+import { Badge } from '@/components/Badge';
 import { useAppStore } from '@/store/appStore';
 import { useEntitlementStore } from '@/store/entitlementStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { APP_CONFIG } from '@/constants/env';
+import { getMicStatus, requestRecordingPermissions, MicPermissionState } from '@/services/permissions';
 
 export default function SettingsScreen() {
-  const { settings, updateSettings, onboarding, resetOnboarding } = useAppStore();
-  const { currentPlanId, plans, hasEntitlement } = useEntitlementStore();
+  const { settings, updateSettings, resetOnboarding } = useAppStore();
+  const { currentPlanId, plans } = useEntitlementStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [permissionState, setPermissionState] = useState<MicPermissionState | null>(null);
+
+  const refreshPermissions = React.useCallback(async () => {
+    const state = await getMicStatus();
+    setPermissionState(state);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      refreshPermissions();
+    }, 0);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refreshPermissions();
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, [refreshPermissions]);
+
+  const handleRequestPermissions = async () => {
+    const state = await requestRecordingPermissions();
+    setPermissionState(state);
+  };
+
+  const handleOpenSettings = () => {
+    Linking.openSettings().catch(() => {});
+  };
 
   const currentPlan = plans.find((p) => p.id === currentPlanId);
 
@@ -30,7 +62,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">Settings</H1>
@@ -143,6 +175,54 @@ export default function SettingsScreen() {
 
       <View style={styles.section}>
         <H2 weight="semiBold" color="textPrimary" style={styles.sectionTitle}>
+          Permissions
+        </H2>
+        <Card variant="outlined" padding="md" style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <H4 weight="semiBold" color="textPrimary">Microphone</H4>
+              <Caption color="textMuted">Required for recording conversations</Caption>
+            </View>
+            {permissionState?.microphone === 'granted' ? (
+              <Button variant="outline" size="sm" onPress={handleOpenSettings} style={styles.permissionButton}>
+                <Caption weight="semiBold" color="success">Granted</Caption>
+              </Button>
+            ) : (
+              <Button
+                variant={permissionState?.canAskAgain === false ? 'outline' : 'primary'}
+                size="sm"
+                onPress={permissionState?.canAskAgain === false ? handleOpenSettings : handleRequestPermissions}
+                style={styles.permissionButton}
+              >
+                <Caption
+                  weight="semiBold"
+                  color={permissionState?.canAskAgain === false ? 'warning' : 'textOnPrimary'}
+                >
+                  {permissionState?.canAskAgain === false ? 'Open Settings' : 'Request'}
+                </Caption>
+              </Button>
+            )}
+          </View>
+          <Separator style={styles.settingSeparator} />
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <H4 weight="semiBold" color="textPrimary">Notifications</H4>
+              <Caption color="textMuted">
+                Shown while a recording is in progress
+              </Caption>
+            </View>
+            <Badge
+              variant={permissionState?.notifications === 'granted' ? 'success' : 'warning'}
+              size="sm"
+            >
+              {permissionState?.notifications === 'granted' ? 'Granted' : 'Disabled'}
+            </Badge>
+          </View>
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <H2 weight="semiBold" color="textPrimary" style={styles.sectionTitle}>
           Notifications
         </H2>
         <Card variant="outlined" padding="md" style={styles.settingsCard}>
@@ -219,11 +299,11 @@ export default function SettingsScreen() {
           Legal
         </H2>
         <Card variant="outlined" padding="md" style={styles.settingsCard}>
-          <Button variant="ghost" fullWidth style={styles.legalButton}>
+          <Button variant="ghost" fullWidth style={styles.legalButton} onPress={() => Linking.openURL(APP_CONFIG.privacyUrl).catch(() => {})}>
             <Ionicons name="document-text" size={18} style={{ marginRight: 8 }} />
             Privacy Policy
           </Button>
-          <Button variant="ghost" fullWidth style={styles.legalButton}>
+          <Button variant="ghost" fullWidth style={styles.legalButton} onPress={() => Linking.openURL(APP_CONFIG.termsUrl).catch(() => {})}>
             <Ionicons name="document-text" size={18} style={{ marginRight: 8 }} />
             Terms of Service
           </Button>
@@ -316,6 +396,9 @@ const styles = StyleSheet.create({
   },
   toggleButton: {
     minWidth: 60,
+  },
+  permissionButton: {
+    minWidth: 100,
   },
   settingSeparator: {
     marginVertical: Theme.spacing[2],

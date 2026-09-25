@@ -5,6 +5,7 @@ import { Card } from './Card';
 import { Separator } from './Separator';
 import { Typography } from './Typography';
 import { Button } from './Button';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ModalContentProps extends ViewProps {
   title?: string; subtitle?: string; hideClose?: boolean; onClose?: () => void;
@@ -14,7 +15,7 @@ interface ModalContentProps extends ViewProps {
 export const ModalContent = React.forwardRef<View, ModalContentProps>(
   ({ title, subtitle, hideClose = false, onClose, children, footer, style, ...props }, ref) => (
     <Card variant="elevated" padding="none" style={styles.content}>
-      {(title || !hideClose) && <View style={styles.header}><View style={styles.headerLeft}>{title && <Typography variant="h4" weight="semiBold" color="textPrimary">{title}</Typography>}{subtitle && <Typography variant="body" color="textSecondary" style={styles.subtitle}>{subtitle}</Typography>}</View>{!hideClose && <Button variant="ghost" size="sm" onPress={onClose} style={styles.closeButton}>✕</Button>}</View>}
+      {(title || !hideClose) && <View style={styles.header}><View style={styles.headerLeft}>{title && <Typography variant="h4" weight="semiBold" color="textPrimary">{title}</Typography>}{subtitle && <Typography variant="body" color="textSecondary" style={styles.subtitle}>{subtitle}</Typography>}</View>{!hideClose && <Button variant="ghost" size="sm" onPress={onClose} style={styles.closeButton}><Ionicons name="close" size={18} color={Theme.colors.textSecondary} /></Button>}</View>}
       <View style={styles.body}>{children}</View>
       {footer && <View style={styles.footer}><Separator />{footer}</View>}
     </Card>

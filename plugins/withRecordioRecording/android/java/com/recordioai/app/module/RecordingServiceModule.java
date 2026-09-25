@@ -115,28 +115,11 @@ public class RecordingServiceModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void requestPermissions(Promise promise) {
-        Activity activity = getCurrentActivity();
-        if (activity == null) {
-            promise.resolve(permissionMap(false, "No activity available"));
-            return;
-        }
-
         if (hasRecordAudioPermission()) {
             promise.resolve(permissionMap(true, null));
             return;
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_REQUEST_CODE);
-            } else {
-                ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSION_REQUEST_CODE);
-            }
-        } else {
-            ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSION_REQUEST_CODE);
-        }
-
-        promise.resolve(permissionMap(false, "Permission request initiated"));
+        promise.resolve(permissionMap(false, "Use PermissionsAndroid from JS to request microphone access"));
     }
 
     private boolean hasRecordAudioPermission() {

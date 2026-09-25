@@ -12,11 +12,13 @@ import { useAppStore } from '@/store/appStore';
 import { useEntitlementStore } from '@/store/entitlementStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Conversation } from '@/types';
 
 export default function HomeScreen() {
   const { agents, conversations, activeAgentId } = useAppStore();
   const { hasEntitlement } = useEntitlementStore();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const connectedAgents = agents.filter((a) => a.status === 'connected');
@@ -40,7 +42,7 @@ export default function HomeScreen() {
 
   if (!connectedAgents.length && !conversations.length) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: Theme.spacing[4] + insets.top }]}>
         <View style={styles.header}>
           <H1 weight="bold" color="textPrimary">RecordioAI</H1>
           <Body color="textSecondary" style={styles.tagline}>
@@ -61,7 +63,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
       refreshControl={
         <RefreshControl
           refreshing={false}

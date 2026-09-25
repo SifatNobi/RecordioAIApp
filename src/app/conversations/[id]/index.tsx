@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl, TextInput } from 'react-native';
+import { View, ScrollView, StyleSheet, RefreshControl, TextInput, Linking, Share } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { H1, H2, H3, H4, Body, Caption, Overline, Mono } from '@/components/Typography';
 import { Card, CardContent } from '@/components/Card';
@@ -12,7 +12,7 @@ import { Modal } from '@/components/Modal';
 import { useAppStore } from '@/store/appStore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Conversation, Transcript, TranscriptSegment, SpeakerLabel, ProcessingStatus } from '@/types';
+import { Conversation, Transcript, TranscriptSegment, SpeakerLabel, ProcessingStatus, Commitment } from '@/types';
 
 export default function ConversationDetailScreen() {
   const { id: rawId } = useLocalSearchParams();
@@ -68,9 +68,23 @@ export default function ConversationDetailScreen() {
     setShowWhatsAppModal(true);
   };
 
+  const handleToggleCommitment = (commitmentId: string) => {
+    if (!conversation.analysis) return;
+    const commitments = conversation.analysis.commitments.map((c) =>
+      c.id === commitmentId
+        ? { ...c, status: (c.status === 'completed' ? 'pending' : 'completed') as Commitment['status'] }
+        : c
+    );
+    updateConversation(conversation.id, {
+      analysis: { ...conversation.analysis, commitments },
+    });
+  };
+
   const handleSendWhatsApp = () => {
-    // In a real app, this would use Linking.openURL with whatsapp://
-    console.log('Opening WhatsApp with message:', whatsappMessage);
+    const trimmed = whatsappMessage.trim();
+    if (!conversation?.customer.phoneNumber || !trimmed) return;
+    const waUrl = `https://wa.me/${conversation.customer.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(trimmed)}`;
+    Linking.openURL(waUrl).catch(() => {});
     setShowWhatsAppModal(false);
   };
 
@@ -159,7 +173,7 @@ export default function ConversationDetailScreen() {
         {activeTab === 'overview' && <OverviewTab conversation={conversation} />}
         {activeTab === 'transcript' && <TranscriptTab conversation={conversation} />}
         {activeTab === 'products' && <ProductsTab conversation={conversation} />}
-        {activeTab === 'commitments' && <CommitmentsTab conversation={conversation} />}
+        {activeTab === 'commitments' && <CommitmentsTab conversation={conversation} onToggleCommitment={handleToggleCommitment} />}
         {activeTab === 'receipt' && <ReceiptTab conversation={conversation} />}
         {activeTab === 'evidence' && <EvidenceTab conversation={conversation} />}
 
@@ -538,7 +552,7 @@ function ProductsTab({ conversation }: { conversation: Conversation }) {
   );
 }
 
-function CommitmentsTab({ conversation }: { conversation: Conversation }) {
+function CommitmentsTab({ conversation, onToggleCommitment }: { conversation: Conversation; onToggleCommitment: (commitmentId: string) => void }) {
   if (!conversation.analysis) {
     return (
       <EmptyState
@@ -600,7 +614,7 @@ function CommitmentsTab({ conversation }: { conversation: Conversation }) {
                 <Button
                   variant={commitment.status === 'completed' ? 'ghost' : 'primary'}
                   size="sm"
-                  onPress={() => {}}
+                  onPress={() => onToggleCommitment(commitment.id)}
                 >
                   {commitment.status === 'completed' ? 'Completed' : 'Mark Complete'}
                 </Button>
@@ -706,6 +720,8 @@ function ReceiptTab({ conversation }: { conversation: Conversation }) {
 }
 
 function EvidenceTab({ conversation }: { conversation: Conversation }) {
+  const [showPdfNote, setShowPdfNote] = useState(false);
+
   if (!conversation.receipt || !conversation.transcript || !conversation.analysis) {
     return (
       <EmptyState
@@ -715,6 +731,27 @@ function EvidenceTab({ conversation }: { conversation: Conversation }) {
       />
     );
   }
+
+  const handleExportJson = async () => {
+    const payload = JSON.stringify(
+      {
+        conversation,
+        transcript: conversation.transcript,
+        analysis: conversation.analysis,
+        receipt: conversation.receipt,
+      },
+      null,
+      2
+    );
+    try {
+      await Share.share({
+        message: payload,
+        title: 'Conversation Evidence Package',
+      });
+    } catch {
+      // Share cancelled by the user.
+    }
+  };
 
   return (
     <View style={styles.tabContent}>
@@ -753,14 +790,20 @@ function EvidenceTab({ conversation }: { conversation: Conversation }) {
         <Separator style={styles.evidenceSeparator} />
 
         <View style={styles.evidenceActions}>
-          <Button variant="outline" fullWidth>
-            <Ionicons name="download" size={18} style={{ marginRight: 4 }} />
+          <Button variant="outline" fullWidth onPress={() => setShowPdfNote(true)}>
+            <Ionicons name="document" size={18} style={{ marginRight: 4 }} />
             Export as PDF
           </Button>
-          <Button variant="outline" fullWidth>
+          <Button variant="outline" fullWidth onPress={handleExportJson}>
             <Ionicons name="download" size={18} style={{ marginRight: 4 }} />
             Export as JSON
           </Button>
+          {showPdfNote && (
+            <Caption color="textMuted" style={styles.pdfNote}>
+              PDF export is planned for the full release. You can export the
+              complete evidence package as JSON right now.
+            </Caption>
+          )}
         </View>
       </Card>
 
@@ -1186,6 +1229,12 @@ const styles = StyleSheet.create({
   evidenceActions: {
     flexDirection: 'row',
     gap: Theme.spacing[3],
+    flexWrap: 'wrap',
+  },
+  pdfNote: {
+    textAlign: 'center',
+    lineHeight: 18,
+    width: '100%',
   },
   sourceCard: {
     gap: Theme.spacing[3],

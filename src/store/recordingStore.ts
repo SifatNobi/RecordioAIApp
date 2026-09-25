@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { Transcript } from '@/types';
 
 export interface SavedRecording {
@@ -110,7 +112,9 @@ export const useRecordingStore = create<RecordingStoreState & RecordingStoreActi
     }),
     {
       name: 'recordioai-recordings-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() =>
+        Platform.OS === 'web' ? localStorage : AsyncStorage
+      ),
       partialize: (state) => ({
         recordings: state.recordings.map(({ _transcript, ...recording }) => recording),
       }),

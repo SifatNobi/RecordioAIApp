@@ -1,5 +1,6 @@
 import { NativeModules, DeviceEventEmitter, Platform, EmitterSubscription } from 'react-native';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { requestRecordingPermissions } from '@/services/permissions';
 
 const { RecordingServiceModule } = NativeModules;
 
@@ -84,11 +85,19 @@ export const RecordingService: RecordingServiceInterface = {
   },
 
   async requestPermissions() {
-    if (!isAndroid || !RecordingServiceModule) {
-      return { granted: false, error: 'Permission module not available' };
+    if (!isAndroid) {
+      return { granted: true };
     }
     try {
-      return await RecordingServiceModule.requestPermissions();
+      const state = await requestRecordingPermissions();
+      return {
+        granted: state.microphoneGranted,
+        error: state.microphoneGranted
+          ? undefined
+          : state.microphone === 'never_ask_again'
+            ? 'Microphone permission is permanently blocked'
+            : 'Microphone permission is required to record conversations',
+      };
     } catch (error) {
       return { granted: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }

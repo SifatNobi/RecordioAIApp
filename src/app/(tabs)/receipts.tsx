@@ -10,22 +10,24 @@ import { EmptyState } from '@/components/EmptyState';
 import { useAppStore } from '@/store/appStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReceiptsScreen() {
   const { conversations } = useAppStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Filter conversations that have receipts
   const conversationsWithReceipts = conversations.filter((c) => c.receipt);
 
   const handleViewReceipt = (conversationId: string) => {
-    router.push(`/receipts/${conversationId}`);
+    router.push(`/conversations/${conversationId}`);
   };
 
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
       refreshControl={
         <RefreshControl
           refreshing={false}

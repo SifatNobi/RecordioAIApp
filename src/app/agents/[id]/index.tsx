@@ -1,17 +1,24 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, Body, Caption, Overline, Mono } from '@/components/Typography';
-import { Card, CardContent } from '@/components/Card';
+import { H1, H2, H3, Body, Caption, Mono } from '@/components/Typography';
+import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
-import { Modal } from '@/components/Modal';
+import { BaseModal, ModalContent } from '@/components/Modal';
+import { Input } from '@/components/Input';
 import { useAppStore } from '@/store/appStore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { AIAgent, AgentStatus, PhoneNumber } from '@/types';
+import { AgentStatus, PhoneNumber } from '@/types';
+
+let phoneCounter = 0;
+function createPhoneNumberId(): string {
+  phoneCounter += 1;
+  return `ph_${Date.now()}_${phoneCounter}`;
+}
 
 export default function AgentDetailScreen() {
   const { id: rawId } = useLocalSearchParams();
@@ -22,6 +29,8 @@ export default function AgentDetailScreen() {
   const agent = agents.find((a) => a.id === agentId);
 
   const [showDisconnectModal, setShowDisconnectModal] = React.useState(false);
+  const [showAddPhoneModal, setShowAddPhoneModal] = React.useState(false);
+  const [phoneNumberInput, setPhoneNumberInput] = React.useState('');
 
   if (!agent) {
     return (
@@ -59,7 +68,39 @@ export default function AgentDetailScreen() {
   };
 
   const handleAddPhoneNumber = () => {
-    router.push(`/agents/${agent.id}/phone-number`);
+    setShowAddPhoneModal(true);
+  };
+
+  const handleSavePhoneNumber = () => {
+    const parsed = phoneNumberInput.trim();
+    if (!parsed) return;
+    const newNumber: PhoneNumber = {
+      id: createPhoneNumberId(),
+      agentId: agent.id,
+      number: parsed,
+      direction: 'both',
+      isActive: true,
+      recordingConsent: {
+        requireDisclosure: true,
+        consentMethod: 'explicit',
+      },
+      processingConfig: {
+        transcribe: true,
+        analyze: true,
+        extractProducts: true,
+        extractPrices: true,
+        extractFees: true,
+        extractCommitments: true,
+        detectDiscrepancies: true,
+        generateReceipt: true,
+      },
+      createdAt: new Date().toISOString(),
+    };
+    updateAgent(agent.id, {
+      phoneNumbers: [...agent.phoneNumbers, newNumber],
+    });
+    setPhoneNumberInput('');
+    setShowAddPhoneModal(false);
   };
 
   return (
@@ -221,26 +262,48 @@ export default function AgentDetailScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      <Modal
-        visible={showDisconnectModal}
-        onClose={() => setShowDisconnectModal(false)}
-        size="sm"
-      >
-        <View style={styles.modalContent}>
-          <H3 weight="semiBold" color="textPrimary">Disconnect Agent</H3>
-          <Body color="textSecondary" style={styles.modalText}>
-            {`Are you sure you want to disconnect "${agent.name}"? This will remove the agent and all its configuration. Conversation history will be preserved.`}
-          </Body>
-          <View style={styles.modalActions}>
-            <Button variant="ghost" fullWidth onPress={() => setShowDisconnectModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" fullWidth onPress={handleDisconnect}>
-              Disconnect
-            </Button>
+      <BaseModal visible={showDisconnectModal} onClose={() => setShowDisconnectModal(false)} size="sm">
+        <ModalContent title="Disconnect Agent" onClose={() => setShowDisconnectModal(false)}>
+          <View style={styles.modalContent}>
+            <Body color="textSecondary" style={styles.modalText}>
+              {`Are you sure you want to disconnect "${agent.name}"? This will remove the agent and all its configuration. Conversation history will be preserved.`}
+            </Body>
+            <View style={styles.modalActions}>
+              <Button variant="ghost" fullWidth onPress={() => setShowDisconnectModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" fullWidth onPress={handleDisconnect}>
+                Disconnect
+              </Button>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </ModalContent>
+      </BaseModal>
+
+      <BaseModal visible={showAddPhoneModal} onClose={() => setShowAddPhoneModal(false)} size="sm">
+        <ModalContent title="Add Phone Number" onClose={() => setShowAddPhoneModal(false)}>
+          <View style={styles.modalContent}>
+            <Body color="textSecondary" style={styles.modalText}>
+              Number that this agent uses to make and receive calls.
+            </Body>
+            <Input
+              placeholder="+1 555 000 0000"
+              value={phoneNumberInput}
+              onChangeText={setPhoneNumberInput}
+              keyboardType="phone-pad"
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <Button variant="ghost" fullWidth onPress={() => setShowAddPhoneModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" fullWidth onPress={handleSavePhoneNumber}>
+                Save Number
+              </Button>
+            </View>
+          </View>
+        </ModalContent>
+      </BaseModal>
     </View>
   );
 }

@@ -11,10 +11,12 @@ import { EmptyState } from '@/components/EmptyState';
 import { useAppStore } from '@/store/appStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AIAgent, AgentStatus } from '@/types';
 
 export default function AgentsScreen() {
   const { agents, removeAgent, setActiveAgent } = useAppStore();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const handleConnectAgent = () => {
@@ -51,7 +53,7 @@ export default function AgentsScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
       refreshControl={
         <RefreshControl
           refreshing={false}

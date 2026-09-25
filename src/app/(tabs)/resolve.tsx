@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { H1, H2, H3, Body, Caption } from '@/components/Typography';
@@ -7,20 +7,24 @@ import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
+import { BaseModal, ModalContent } from '@/components/Modal';
 import { useAppStore } from '@/store/appStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DisputeStatus, DisputeDetails } from '@/types';
 
 export default function ResolveScreen() {
   const { conversations } = useAppStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [showCreateDispute, setShowCreateDispute] = useState(false);
 
   // Disputes will come from the backend API in a real integration.
   const disputes: DisputeDetails[] = [];
 
   const handleCreateDispute = () => {
-    router.push('/resolve/create');
+    setShowCreateDispute(true);
   };
 
   const statusVariants: Record<DisputeStatus, BadgeProps['variant']> = {
@@ -44,7 +48,7 @@ export default function ResolveScreen() {
   return (
     <ScrollView
       style={styles.scrollView}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
       refreshControl={
         <RefreshControl
           refreshing={false}
@@ -116,6 +120,20 @@ export default function ResolveScreen() {
       )}
 
       <View style={styles.bottomSpacer} />
+
+      <BaseModal visible={showCreateDispute} onClose={() => setShowCreateDispute(false)}>
+        <ModalContent title="Create Dispute" onClose={() => setShowCreateDispute(false)}>
+          <Body color="textSecondary" style={styles.modalBody}>
+            Dispute creation is not available yet in this build. In the full
+            release you can flag discrepancies from any conversation as the
+            starting point of a dispute, and attached verified receipts as
+            evidence.
+          </Body>
+          <Button variant="primary" fullWidth onPress={() => setShowCreateDispute(false)}>
+            Got it
+          </Button>
+        </ModalContent>
+      </BaseModal>
     </ScrollView>
   );
 }
@@ -185,6 +203,9 @@ const styles = StyleSheet.create({
   disputeMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  modalBody: {
+    marginBottom: Theme.spacing[4],
   },
   bottomSpacer: {
     height: 100,

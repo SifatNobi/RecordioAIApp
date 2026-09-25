@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '@/constants/theme';
@@ -10,6 +10,7 @@ import { LoadingState } from '@/components/LoadingState';
 import { useRecordingService } from '@/native/RecordingService';
 import { useRecordingStore } from '@/store/recordingStore';
 import { runRecordPipeline, retryRecordPipeline, userMessageForError } from '@/services/recording/pipeline';
+import { getMicStatus } from '@/services/permissions';
 
 interface RecordingScreenProps {
   title: string;
@@ -19,6 +20,11 @@ interface RecordingScreenProps {
 }
 
 type ScreenPhase = 'idle' | 'recording' | 'processing' | 'error';
+
+interface PermissionIssue {
+  message: string;
+  canAskAgain: boolean;
+}
 
 export function RecordingScreen({
   title,
@@ -41,6 +47,7 @@ export function RecordingScreen({
   const [phase, setPhase] = useState<ScreenPhase>('idle');
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [permissionIssue, setPermissionIssue] = useState<PermissionIssue | null>(null);
   const processingRef = useRef(false);
 
   const activeRecording = useRecordingStore((s) =>
@@ -104,13 +111,18 @@ export function RecordingScreen({
 
   const handleStart = useCallback(async () => {
     setErrorMessage(null);
+    setPermissionIssue(null);
     if (permissionGranted === null || !permissionGranted) {
       const perm = await checkPermissions();
       if (!perm.granted) {
-        setPhase('error');
-        setErrorMessage(
-          perm.error || 'Microphone permission is required to record. Allow access in Settings.'
-        );
+        const status = await getMicStatus();
+        setPermissionIssue({
+          message:
+            status.microphone === 'never_ask_again'
+              ? 'Microphone access is blocked for RecordioAI. Enable it in system Settings to record conversations.'
+              : 'Microphone permission is required to record. Allow access when prompted.',
+          canAskAgain: status.canAskAgain,
+        });
         return;
       }
     }
@@ -124,6 +136,15 @@ export function RecordingScreen({
     }
     setPhase('recording');
   }, [permissionGranted, checkPermissions, startRecording, recordingType]);
+
+  const handleOpenSettings = useCallback(() => {
+    Linking.openSettings().catch(() => {});
+  }, []);
+
+  const handleTryAgainPermission = useCallback(() => {
+    setPermissionIssue(null);
+    setPhase('idle');
+  }, []);
 
   const handleStop = useCallback(async () => {
     stopPipelineRef.current?.();
@@ -153,6 +174,7 @@ export function RecordingScreen({
     stopPipelineRef.current?.();
     setPhase('idle');
     setErrorMessage(null);
+    setPermissionIssue(null);
     setActiveRecordingId(null);
     reset();
   }, [reset]);
@@ -200,6 +222,42 @@ export function RecordingScreen({
           <Button variant="ghost" fullWidth onPress={handleStartOver} style={styles.startOverButton}>
             Start Over
           </Button>
+        </Card>
+      ) : permissionIssue ? (
+        <Card variant="outlined" padding="lg" style={styles.permissionCard}>
+          <View style={styles.permissionIcon}>
+            <Ionicons name="mic-off" size={28} color={Theme.colors.warning} />
+          </View>
+          <H3 weight="semiBold" color="textPrimary" style={styles.permissionTitle}>
+            Microphone permission required
+          </H3>
+          <Body color="textSecondary" style={styles.permissionMessage}>
+            {permissionIssue.message}
+          </Body>
+          <Button
+            variant="primary"
+            fullWidth
+            onPress={handleOpenSettings}
+            leftIcon={
+              <Ionicons name="settings" size={18} color={Theme.colors.textOnPrimary} />
+            }
+          >
+            Open System Settings
+          </Button>
+          {permissionIssue.canAskAgain && (
+            <Button
+              variant="ghost"
+              fullWidth
+              onPress={handleTryAgainPermission}
+              style={styles.startOverButton}
+            >
+              Try Again
+            </Button>
+          )}
+          <Caption color="textMuted" style={styles.permissionNote}>
+            Recording captures only what this device&apos;s microphone hears. Make
+            sure everyone consenting is aware the conversation is being recorded.
+          </Caption>
         </Card>
       ) : showControl ? (
         <Card variant="outlined" padding="lg" style={styles.controlCard}>
@@ -352,6 +410,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   startOverButton: {
+    marginTop: Theme.spacing[1],
+  },
+  permissionCard: {
+    alignItems: 'center',
+    gap: Theme.spacing[3],
+    marginBottom: Theme.spacing[4],
+  },
+  permissionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 190, 92, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionTitle: {},
+  permissionMessage: {
+    textAlign: 'center',
+  },
+  permissionNote: {
+    textAlign: 'center',
     marginTop: Theme.spacing[1],
   },
   footnoteCard: {

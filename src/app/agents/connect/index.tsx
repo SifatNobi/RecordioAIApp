@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, H4, Body, Caption, Overline } from '@/components/Typography';
+import { H1, H2, H3, Body, Caption } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Badge } from '@/components/Badge';
-import { Separator } from '@/components/Separator';
 import { useAppStore } from '@/store/appStore';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
