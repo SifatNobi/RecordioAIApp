@@ -192,11 +192,23 @@ record-conversation route.
 
 ## 10. CI/CD Verification
 
-- Latest run `36094331714` (push `fea4aac` → `main`): **success**.
-  - Validate job: passed (48s).
-  - Build Android Test APK job: passed.
-- Artifact `RecordioAI-debug-teststore.apk` downloaded and verified:
-  131,996,657 bytes (>10 MB gate).
+- Latest run `36114390253` (push `fea4aac..509be7a` → `main`): **success**.
+  - Validate job: passed (Type check + Lint green).
+  - Build Android Test APK (debug + Test Store): passed — including
+    "Verify debug test APK is self-contained" and artifact upload.
+  - Release upload step intentionally skipped (no Release configured).
+- Artifact re-downloaded and verified this session:
+  `RecordioAI-debug-teststore.apk` = 126.2 MB (>10 MB gate),
+  `package=com.recordioai.app` versionCode 2, `targetSdk 36`,
+  `launchable-activity=com.recordioai.app.MainActivity`,
+  `assets/index.android.bundle` present (5,137,572 bytes), Hermes `libhermesvm.so`
+  for `arm64-v8a` + `armeabi-v7a`. Installs cleanly (`adb install -r`: Success).
+- NOTE on launchability: CI pins phone ABIs only (`arm64-v8a,armeabi-v7a`) to stay
+  within runner disk limits, so the artifact installs but cannot *run* on the x86_64
+  emulator (SoLoader: DSO not found for `libreactnative.so`, no ARM translation).
+  The identical source built locally with all ABIs (incl. x86_64) installs, launches,
+  and passed the full recording pipeline E2E on this emulator (§7.1). The CI artifact
+  is intended for real ARM devices.
 - Earlier this track, CI also absorbed: gradle disk-exhaustion fix on runners, and a fix
   for the `gradle.properties` ABI-append step corrupting the `kotlinVersion` line.
 
