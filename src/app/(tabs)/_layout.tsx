@@ -9,9 +9,10 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 export default function TabLayout() {
   const onboarding = useAppStore((s) => s.onboarding);
+  const hasHydrated = useAppStore((s) => s.hasHydrated);
   const insets = useSafeAreaInsets();
 
-  if (!onboarding.completed) {
+  if (!hasHydrated || !onboarding.completed) {
     return null;
   }
 

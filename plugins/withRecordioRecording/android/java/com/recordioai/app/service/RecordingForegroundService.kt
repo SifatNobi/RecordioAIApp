@@ -64,6 +64,7 @@ class RecordingForegroundService : Service() {
     private var mediaRecorder: MediaRecorder? = null
     private var outputFile: File? = null
     private var startTime: Long = 0
+    private var accumulatedDuration: Long = 0
     private var isRecording = false
     private var isPaused = false
     private var recordingType = "conversation"
@@ -76,6 +77,13 @@ class RecordingForegroundService : Service() {
         }
     }
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun effectiveDurationMillis(): Long {
+        if (!isRecording || isPaused || startTime <= 0) return accumulatedDuration
+        return accumulatedDuration + (System.currentTimeMillis() - startTime)
+    }
+
+    private fun effectiveDurationSeconds(): Long = effectiveDurationMillis() / 1000
 
     override fun onCreate() {
         super.onCreate()
@@ -140,9 +148,7 @@ class RecordingForegroundService : Service() {
             createNotificationIntent(ACTION_PAUSE_RECORDING)
         }
 
-        val elapsed = if (isRecording && startTime > 0) {
-            System.currentTimeMillis() - startTime
-        } else 0L
+        val elapsed = if (isRecording) effectiveDurationMillis() else 0L
 
         val minutes = (elapsed / 1000 / 60) % 60
         val seconds = (elapsed / 1000) % 60
@@ -214,6 +220,7 @@ class RecordingForegroundService : Service() {
             isRecording = true
             isPaused = false
             startTime = System.currentTimeMillis()
+            accumulatedDuration = 0
             currentState = "recording"
             currentDuration = 0
             currentPaused = false
@@ -240,6 +247,10 @@ class RecordingForegroundService : Service() {
         if (!isRecording || isPaused) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             mediaRecorder?.pause()
+            if (startTime > 0) {
+                accumulatedDuration += System.currentTimeMillis() - startTime
+                startTime = 0
+            }
             isPaused = true
             currentPaused = true
             currentState = "paused"
@@ -255,6 +266,7 @@ class RecordingForegroundService : Service() {
             isPaused = false
             currentPaused = false
             currentState = "recording"
+            startTime = System.currentTimeMillis()
             sendStateEvent("recording")
             updateNotification()
         }
@@ -274,8 +286,9 @@ class RecordingForegroundService : Service() {
             isRecording = false
             isPaused = false
             val filePath = outputFile?.absolutePath
-            val duration = (System.currentTimeMillis() - startTime) / 1000
+            val duration = effectiveDurationSeconds()
             startTime = 0
+            accumulatedDuration = 0
             currentState = "stopped"
             currentPaused = false
 
@@ -300,11 +313,7 @@ class RecordingForegroundService : Service() {
     }
 
     private fun sendProgressEvent() {
-        val elapsed = if (isRecording && startTime > 0) {
-            (System.currentTimeMillis() - startTime) / 1000
-        } else 0L
-
-        currentDuration = elapsed.toInt()
+        currentDuration = effectiveDurationSeconds().toInt()
 
         val params = Arguments.createMap().apply {
             putInt("duration", currentDuration)

@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, ScrollView, StyleSheet, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Theme } from '@/constants/theme';
 import { H1, H3, Body, Caption } from '@/components/Typography';
@@ -18,6 +19,7 @@ const MAX_TRANSCRIPT_CHARS = 500000;
 
 export default function PasteTranscriptScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<'idle' | 'processing' | 'error'>('idle');
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
@@ -85,6 +87,8 @@ export default function PasteTranscriptScreen() {
       style={styles.scrollView}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">Paste Transcript</H1>
@@ -146,7 +150,7 @@ export default function PasteTranscriptScreen() {
         </Button>
       )}
 
-      <View style={styles.bottomSpacer} />
+      <View style={[styles.bottomSpacer, { height: 40 + insets.bottom }]} />
     </ScrollView>
   );
 }

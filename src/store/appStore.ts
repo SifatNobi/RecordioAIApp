@@ -14,6 +14,7 @@ interface AppState {
   activeConversationId: string | null;
   isLoading: boolean;
   error: string | null;
+  hasHydrated: boolean;
 }
 
 interface AppActions {
@@ -63,6 +64,7 @@ export const useAppStore = create<AppState & AppActions>()(
       activeConversationId: null,
       isLoading: false,
       error: null,
+      hasHydrated: false,
 
       setOnboardingStep: (step) =>
         set((state) => ({
@@ -144,6 +146,9 @@ export const useAppStore = create<AppState & AppActions>()(
         conversations: state.conversations,
         customers: state.customers,
       }),
+      onRehydrateStorage: () => (state) => {
+        useAppStore.setState({ hasHydrated: true });
+      },
     }
   )
 );

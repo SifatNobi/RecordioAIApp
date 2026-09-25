@@ -60,6 +60,8 @@ export default function ConversationsScreen() {
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         <RefreshControl
           refreshing={false}

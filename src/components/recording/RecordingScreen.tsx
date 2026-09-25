@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, ScrollView, StyleSheet, Linking, AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '@/constants/theme';
 import { H1, H3, Body, Caption, Overline } from '@/components/Typography';
 import { Card } from '@/components/Card';
@@ -33,6 +34,7 @@ export function RecordingScreen({
   banner,
 }: RecordingScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
     state,
     permissionGranted,
@@ -42,6 +44,7 @@ export function RecordingScreen({
     resumeRecording,
     checkPermissions,
     reset,
+    refresh,
   } = useRecordingService();
 
   const [phase, setPhase] = useState<ScreenPhase>('idle');
@@ -108,6 +111,20 @@ export function RecordingScreen({
     processingRef.current = false;
     stopPipelineRef.current?.();
   }, []);
+
+  // Reconcile with the real native recorder when the app returns to the
+  // foreground so the UI can never get stuck showing READY/00:00 while a
+  // native recording is actually in progress (e.g. after events were missed).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refresh();
+      }
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [refresh]);
 
   const handleStart = useCallback(async () => {
     setErrorMessage(null);
@@ -329,7 +346,7 @@ export function RecordingScreen({
         </Body>
       </View>
 
-      <View style={styles.bottomSpacer} />
+      <View style={[styles.bottomSpacer, { height: 40 + insets.bottom }]} />
     </ScrollView>
   );
 }

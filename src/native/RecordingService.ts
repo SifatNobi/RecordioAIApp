@@ -194,6 +194,18 @@ export function useRecordingService() {
     });
   }, []);
 
+  const refresh = useCallback(async () => {
+    if (!isAndroid || !RecordingServiceModule) return;
+    try {
+      const nativeState = await RecordingService.getRecordingState();
+      if (nativeState && nativeState.state) {
+        updateState(nativeState);
+      }
+    } catch {
+      // Ignore transient refresh failures; events keep state fresh.
+    }
+  }, [updateState]);
+
   return {
     state,
     permissionGranted,
@@ -203,6 +215,7 @@ export function useRecordingService() {
     resumeRecording,
     checkPermissions,
     reset,
+    refresh,
   };
 }
 
