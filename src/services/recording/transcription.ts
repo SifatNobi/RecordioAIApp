@@ -165,7 +165,10 @@ function classifyError(error: unknown): TranscriptionError {
 async function validateAudioFile(fileUri: string): Promise<{ valid: boolean; error?: string; size?: number; duration?: number }> {
   try {
     const { getInfoAsync } = await import('expo-file-system/legacy');
-    const fileInfo = await getInfoAsync(fileUri);
+    const normalizedUri = fileUri.startsWith('file:') || fileUri.startsWith('content:') || fileUri.startsWith('asset:')
+      ? fileUri
+      : `file://${fileUri}`;
+    const fileInfo = await getInfoAsync(normalizedUri);
 
     if (!fileInfo.exists) {
       return { valid: false, error: 'Audio file not found' };
@@ -203,27 +206,58 @@ export async function transcribeAudio(
     );
   }
 
-  const formData = new FormData();
+  const normalizedUri = fileUri.startsWith('file:') || fileUri.startsWith('content:') || fileUri.startsWith('asset:')
+    ? fileUri
+    : `file://${fileUri}`;
   const fileName = fileUri.split('/').pop() || 'recording.m4a';
   const mimeType = fileName.endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
 
-  formData.append('file', {
-    uri: fileUri,
-    name: fileName,
-    type: mimeType,
-  } as any);
-
+  const fields: Array<[string, string]> = [];
   if (options.language) {
-    formData.append('language', options.language);
+    fields.push(['language', options.language]);
   }
   if (options.speakerDiarization !== undefined) {
-    formData.append('speaker_diarization', String(options.speakerDiarization));
+    fields.push(['speaker_diarization', String(options.speakerDiarization)]);
   }
   if (options.punctuate !== undefined) {
-    formData.append('punctuate', String(options.punctuate));
+    fields.push(['punctuate', String(options.punctuate)]);
   }
   if (options.profanityFilter !== undefined) {
-    formData.append('profanity_filter', String(options.profanityFilter));
+    fields.push(['profanity_filter', String(options.profanityFilter)]);
+  }
+
+  // Expo's WinterCG fetch does not support React Native's legacy FormData
+  // `{ uri, name, type }` parts, so the multipart body is built explicitly.
+  const { File } = await import('expo-file-system');
+  const boundary = `----RecordioAIBoundary_${Math.random().toString(36).slice(2)}`;
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  const pushString = (value: string) => chunks.push(encoder.encode(value));
+
+  for (const [fieldName, fieldValue] of fields) {
+    pushString(`--${boundary}\r\n`);
+    pushString(`Content-Disposition: form-data; name="${fieldName}"\r\n\r\n`);
+    pushString(`${fieldValue}\r\n`);
+  }
+
+  pushString(`--${boundary}\r\n`);
+  pushString(`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`);
+  pushString(`Content-Type: ${mimeType}\r\n\r\n`);
+  chunks.push(await new File(normalizedUri).bytes());
+  pushString(`\r\n--${boundary}--\r\n`);
+
+  const bodyChunks: Uint8Array[] = [];
+  let bodyLength = 0;
+  for (const chunk of chunks) {
+    bodyChunks.push(chunk);
+    bodyLength += chunk.length;
+  }
+  const body = new Uint8Array(bodyLength);
+  let offset = 0;
+  for (const chunk of bodyChunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
   }
 
   const controller = new AbortController();
@@ -232,9 +266,10 @@ export async function transcribeAudio(
   try {
     const response = await fetch(`${API_BASE_URL}/transcribe`, {
       method: 'POST',
-      body: formData,
+      body,
       headers: {
         'Accept': 'application/json',
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
       },
       signal: controller.signal,
     });
