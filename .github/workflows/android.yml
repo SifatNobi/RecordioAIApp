@@ -85,7 +85,6 @@ jobs:
           # supported ABIs (arm64-v8a, armeabi-v7a, x86_64, x86) as a single
           # directly-installable UNIVERSAL APK. This makes the artifact installable
           # on real phones (ARM) and emulators (x86_64) alike.
-        run: |
           cd android
           ./gradlew assembleDebug --no-daemon
 
