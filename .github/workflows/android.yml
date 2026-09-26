@@ -12,10 +12,15 @@ permissions:
   contents: write
   packages: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,6 +44,7 @@ jobs:
     name: Build Android Test APK (debug + Test Store)
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 240
     if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'release'
     env:
       CI: '1'
@@ -60,15 +66,14 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # Keep the npm-style dependency cache for faster rebuilds, but disable the
+          # "gradle-home cache cleanup" housekeeping that made the long Post Setup Gradle
+          # step wait on every run.
+          gradle-home-cache-cleanup: false
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
-
-      - name: Setup Expo
-        uses: expo/expo-github-action@v8
-        with:
-          expo-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Generate the native Android project
         run: npx expo prebuild --platform android --clean --no-install
@@ -77,30 +82,66 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules
           df -h "$HOME"
+          # Do NOT touch gradle.properties: no reactNativeArchitectures pin is applied here.
+          # The generated android/gradle.properties uses the Gradle default, so the debug APK
+          # bundles ALL technically supported ABIs (arm64-v8a, armeabi-v7a, x86_64, x86) as a
+          # single directly-installable UNIVERSAL APK (works on real phones AND emulators).
 
-      - name: Build Android Test APK (debug, universal ABIs)
+      - name: Build Android Test APK (debug, universal ABIs) - ONCE
         run: |
-          # No reactNativeArchitectures pin: the generated android/gradle.properties
-          # uses the Gradle default, so the debug APK bundles ALL technically
-          # supported ABIs (arm64-v8a, armeabi-v7a, x86_64, x86) as a single
-          # directly-installable UNIVERSAL APK. This makes the artifact installable
-          # on real phones (ARM) and emulators (x86_64) alike.
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --console=plain --stacktrace
 
-      - name: Verify debug test APK is self-contained
+      - name: Validate the exact built APK (read-only, no rebuild)
         run: |
+          set -euo pipefail
           APK=android/app/build/outputs/apk/debug/app-debug.apk
           test -f "$APK" || { echo "::error::debug APK not found at $APK"; exit 1; }
           SIZE=$(stat -c%s "$APK")
           test "$SIZE" -gt 10000000 || { echo "::error::debug APK too small ($SIZE bytes)"; exit 1; }
           echo "APK size: $SIZE bytes (OK)"
-          if unzip -p "$APK" assets/index.android.bundle > /dev/null 2>&1; then
-            echo "Verified: assets/index.android.bundle is packaged inside the debug APK (runs WITHOUT Metro)"
+
+          # 1. Archive integrity
+          unzip -t "$APK" > /dev/null && echo "Verified: APK is a valid, uncorrupted zip" || { echo "::error::APK failed unzip -t"; exit 1; }
+
+          # 2. Production API bundle is packaged (self-contained, no Metro) and inlines the
+          #    production endpoint.
+          if unzip -p "$APK" assets/index.android.bundle | grep -q 'https://api.recordioai.com'; then
+            echo "Verified: assets/index.android.bundle packaged + production api.recordioai.com inlined"
           else
-            echo "::error::assets/index.android.bundle is MISSING from the debug APK - it would require Metro"
-            exit 1
+            echo "::error::assets/index.android.bundle missing or production URL absent"; exit 1
           fi
+
+          # 3. Package, version, and UNIVERSAL ABI contents from the exact APK
+          AAPT2=$(ls -1 $ANDROID_HOME/build-tools/*/aapt2 | tail -1)
+          BADGING=$($AAPT2 dump badging "$APK")
+          echo "package: $(echo "$BADGING" | grep -m1 "^package:")"
+
+          # All technically supported ABIs must be present (distribute a universal APK, never
+          # an ARM-only or abi-split artifact).
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            grep -q "native-code:.*'$abi'" <<< "$BADGING" || { echo "::error::ABI $abi missing from APK"; exit 1; }
+          done
+          echo "Verified: universal APK contains arm64-v8a armeabi-v7a x86_64 x86"
+
+          # Native libraries actually packaged per ABI (including the arch-specific
+          # libreactnative.so) - guards against a lib-less "universal" placeholder.
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            unzip -l "$APK" | grep -q "lib/$abi/libreactnative.so" || { echo "::error::lib/$abi/libreactnative.so missing"; exit 1; }
+          done
+          echo "Verified: libreactnative.so present in all 4 ABIs"
+
+          # 4. Launcher icon resources are packaged (adaptive icon on v26+, density fallbacks)
+          unzip -l "$APK" | grep -q 'res/mipmap-anydpi-v26/ic_launcher.xml' || { echo "::error::adaptive ic_launcher missing"; exit 1; }
+          unzip -l "$APK" | grep -q 'res/mipmap-xxxhdpi-v4/ic_launcher.webp' || { echo "::error::xxxhdpi ic_launcher missing"; exit 1; }
+          echo "Verified: launcher icon resources (adaptive + density) packaged"
+
+          # 5. Signature of the exact APK
+          APKSIGNER=$(ls -1 $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --verbose "$APK" | head -6
+
+          # 6. Identity of the exact artifact
+          echo "APK_SHA256=$(sha256sum "$APK" | cut -d' ' -f1)"
 
       - name: Name the test APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk RecordioAI-debug-teststore.apk
