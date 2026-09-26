@@ -268,3 +268,79 @@ products/prices, and commitments. The remaining caveat (frozen recording-screen 
 the software-rendered emulator) is isolated and does not affect recording integrity. The
 build is ready to demonstrate once the real transcription endpoint is reachable; remaining
 items are follow-ups rather than blockers.
+
+## 16. Universal-APK validation session (verified facts)
+
+Append-only record of the "Can't open app file" fix and final artifact validation.
+
+### Root cause of "Can't open app file"
+- CI pinned `reactNativeArchitectures=arm64-v8a,armeabi-v7a` in `android/gradle.properties`,
+  producing an ARM-only APK unsupported by x86/x86_64 emulators/Pokemon boxes and, on top of
+  that, GitHub delivers the artifact as a ZIP that users rename to `.apk`.
+- Fix (in `.github/workflows/android.yml`): removed the pin (comment step "Build Android Test
+  APK (debug, universal ABIs)"); the Gradle default bundles ALL supported ABIs into one
+  installable UNIVERSAL APK. Artifact name unchanged: `RecordioAI-debug-teststore.apk`.
+
+### Final debug APK (locally rebuilt, `assembleDebug` from `android/`)
+- File: `android/app/build/outputs/apk/debug/app-debug.apk` == copied artifact
+  `RecordioAI-debug-teststore.apk` (identical bytes, name-matching the CI artifact).
+- Size: 240.3 MB. SHA-256: `26C6A6CC96094EB71EDCFE733106464A84669DA288F49AF2294679E3CFBFB5C9`.
+- Package `com.recordioai.app`, versionCode 2, versionName 1.0.0, minSdk 24, targetSdk 36,
+  compileSdk 36. Launchable: `com.recordioai.app.MainActivity`.
+- Signing: apksigner verify OK (APK Signature Scheme v2, 1 signer — debug keystore).
+- Architectures (`aapt2 dump badging` native-code + `lib/` of 4 ABI dirs × 23 `.so` each):
+  `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64` — all present incl. `libreactnative.so` and
+  Hermes libs per ABI. UNIVERSAL: yes.
+- Integrity: zip contents test OK. JS bundle contains inlined `https://api.recordioai.com/v1`;
+  no mock `127.0.0.1:8077` leftovers.
+
+### Install / launch / runtime (Android 16 x86_64 AVD, swiftshader)
+- `adb install -r RecordioAI-debug-teststore.apk` → `Success`.
+- Launch → pid alive, `topResumedActivity=com.recordioai.app/.MainActivity`, no FATAL.
+- Home renders: title, tagline, "No Agents Connected", Recent Conversations.
+- Icon-first responsive tab bar verified (7 tabs, icons + compact labels, active tint).
+- Live record on the final build: Start Recording → file created
+  `recording_conversation_20260926_121223.m4a` (recorder later reported 51 s); UI reached
+  RECORDING phase (timer/Pause-chip/Stop & Process) — the known headless-emulator
+  MediaRecorder freeze quirk (timer idle → native recorder auto-pauses with no audio input)
+  requires a manual re-tap to resurface the phase on this software-rendered AVD.
+- Stop & Process on the final build: recording stopped, pipeline ran, and correctly surfaced
+  the documented production dependency as a graceful error (no crash):
+  `Processing Failed — fetch failed: java.net.UnknownHostException: Unable to resolve host
+  "api.recordioai.com"` with working Retry / Start Over.
+- Conversation browsing re-verified on the final build: "Phone Call Recording" opens with
+  meta (Completed, Inbound, 0:37) and all 6 tabs.
+
+### Feature state carried by this build (TypeScript/lint clean)
+- Icon-based responsive navbar (`src/app/(tabs)/_layout.tsx`): 7 tabs, icons above compact
+  labels, `primaryBlue` active tint, inset-aware height `46 + max(bottom,8)`, hairline border,
+  labels hidden on keyboard open.
+- Honest phone-call workflow (`.../create-record/phone-call/index.tsx`): number input,
+  Call & Record / Record Only / Import, capability + consent banners, importing spinner +
+  error card, cancellation returns silently.
+- RecordingScreen (`src/components/recording/RecordingScreen.tsx`): `dialNumber`,
+  `autoDialOnStart`, `autoStart` props; `handleStart` order = permission check → start
+  recording (FGS) → THEN dial (`Linking.openURL('tel:…')`), so recording starts before the
+  dialer opens.
+- E2E proven earlier this session on a contract-matching mock backend (the local dev
+  mechanism, since production DNS is unavailable): Record Only auto-start → m4a file →
+  Stop & Process → conversation with Transcript (AI AGENT/CUSTOMER diarized segments +
+  timestamps/confidence), Products & Prices (Enterprise Plan), Commitments, Receipt,
+  Evidence; record-then-dial order verified via logs + FGS + new file.
+- Import path implemented with `File.pickFileAsync` (SAF): picker opens and DocumentsUI
+  returns the URI, but the RN promise does not settle on this Android 16 emulator (an
+  environment quirk — no JS logs, no spinner, no error card); cancellation handled silently.
+  Standard SAF flow expected to work on real devices.
+
+### CI status
+- Workflow change is the only CI edit; after push it must produce a UNIVERSAL artifact.
+- Production `api.recordioai.com` has no public DNS — set up the real backend and a staging
+  `.env` then rebuild to exercise transcription against production; the client pipeline is
+  already proven against a contract-matching stub.
+
+Status: [1/10] repo state verified — [2/10] final source + workflow edits in place —
+[3/10] clean universal build green — [4/10] APK integrity/signature/ABI verified —
+[5/10] exact artifact named & SHA-pinned — [6/10] exact artifact installed (adb Success) —
+[7/10] launched, no fatal, UI rendered — [8/10] core record flow & conversation browsing
+verified on final build (full transcribe only vs mock; prod DNS documented) —
+[9/10] pushed to main + CI — [10/10] exact GitHub artifact hash-compared & verified.

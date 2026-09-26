@@ -78,15 +78,13 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules
           df -h "$HOME"
 
-      - name: Target phone ABIs only (saves CI build disk/time)
+      - name: Build Android Test APK (debug, universal ABIs)
         run: |
-          # Debug builds compile each ABI's C++ from scratch; a real phone only
-          # needs the ARM ABIs. Emulator-only x86/x86_64 ABIs are excluded here.
-          # Leading newline: the generated gradle.properties has no trailing newline.
-          printf "\nreactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
-          tail -2 android/gradle.properties
-
-      - name: Build Android Test APK (debug)
+          # No reactNativeArchitectures pin: the generated android/gradle.properties
+          # uses the Gradle default, so the debug APK bundles ALL technically
+          # supported ABIs (arm64-v8a, armeabi-v7a, x86_64, x86) as a single
+          # directly-installable UNIVERSAL APK. This makes the artifact installable
+          # on real phones (ARM) and emulators (x86_64) alike.
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon

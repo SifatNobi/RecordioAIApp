@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +7,8 @@ import { useAppStore } from '@/store/appStore';
 import { Theme } from '@/constants/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const TAB_BAR_CONTENT_HEIGHT = 46;
 
 export default function TabLayout() {
   const onboarding = useAppStore((s) => s.onboarding);
@@ -16,7 +19,7 @@ export default function TabLayout() {
     return null;
   }
 
-  const tabBarHeight = 56 + insets.bottom + 8;
+  const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, 8);
 
   return (
     <Tabs
@@ -24,16 +27,15 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: Theme.colors.primaryBlue,
         tabBarInactiveTintColor: Theme.colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-        tabBarStyle: {
-          backgroundColor: Theme.colors.backgroundPrimary,
-          borderTopWidth: 1,
-          borderTopColor: Theme.colors.border,
-          paddingBottom: insets.bottom + 8,
-          paddingTop: 4,
-          height: tabBarHeight,
-        },
-        tabBarItemStyle: { paddingVertical: 0 },
+        tabBarLabelPosition: 'below-icon',
+        tabBarHideOnKeyboard: true,
+        tabBarLabelStyle: styles.label,
+        tabBarIconStyle: styles.icon,
+        tabBarItemStyle: styles.item,
+        tabBarStyle: [
+          styles.bar,
+          { height: tabBarHeight, paddingBottom: Math.max(insets.bottom, 8) },
+        ],
         tabBarIcon: ({ focused, color, size }) => {
           const icons: Record<string, { focused: IoniconName; unfocused: IoniconName }> = {
             index: { focused: 'home', unfocused: 'home-outline' },
@@ -59,3 +61,25 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  bar: {
+    backgroundColor: Theme.colors.backgroundPrimary,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.border,
+    paddingTop: 6,
+  },
+  item: {
+    justifyContent: 'center',
+    paddingVertical: 0,
+  },
+  icon: {
+    marginTop: 2,
+  },
+  label: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+});

@@ -18,6 +18,9 @@ interface RecordingScreenProps {
   tagline: string;
   recordingType: 'conversation' | 'phone_call';
   banner?: React.ReactNode;
+  dialNumber?: string;
+  autoDialOnStart?: boolean;
+  autoStart?: boolean;
 }
 
 type ScreenPhase = 'idle' | 'recording' | 'processing' | 'error';
@@ -32,6 +35,9 @@ export function RecordingScreen({
   tagline,
   recordingType,
   banner,
+  dialNumber,
+  autoDialOnStart = false,
+  autoStart = false,
 }: RecordingScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -52,6 +58,7 @@ export function RecordingScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [permissionIssue, setPermissionIssue] = useState<PermissionIssue | null>(null);
   const processingRef = useRef(false);
+  const autoStartTriggeredRef = useRef(false);
 
   const activeRecording = useRecordingStore((s) =>
     s.recordings.find((r) => r.id === activeRecordingId)
@@ -129,6 +136,7 @@ export function RecordingScreen({
   const handleStart = useCallback(async () => {
     setErrorMessage(null);
     setPermissionIssue(null);
+
     if (permissionGranted === null || !permissionGranted) {
       const perm = await checkPermissions();
       if (!perm.granted) {
@@ -152,7 +160,29 @@ export function RecordingScreen({
       return;
     }
     setPhase('recording');
-  }, [permissionGranted, checkPermissions, startRecording, recordingType]);
+
+    // Place the call only after the recording has begun, while the app is still
+    // foregrounded. The foreground service keeps capturing in the background
+    // while the dialer is open on top.
+    if (autoDialOnStart && dialNumber) {
+      const dialTarget = `tel:${dialNumber.replace(/[^\d+*#-]/g, '')}`;
+      await Linking.openURL(dialTarget).catch(() => {
+        // No dialer available (e.g. emulators without telephony). Recording can
+        // still continue; the user just won't get a live call placed.
+      });
+    }
+  }, [permissionGranted, checkPermissions, startRecording, recordingType, autoDialOnStart, dialNumber]);
+
+  // Used by the call workflow: when a call action was chosen on the setup
+  // screen, start recording (and dialing, if requested) automatically on mount.
+  useEffect(() => {
+    if (!autoStart || autoStartTriggeredRef.current) return;
+    autoStartTriggeredRef.current = true;
+    const timeoutId = setTimeout(() => {
+      handleStart();
+    }, 400);
+    return () => clearTimeout(timeoutId);
+  }, [autoStart, handleStart]);
 
   const handleOpenSettings = useCallback(() => {
     Linking.openSettings().catch(() => {});
