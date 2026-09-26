@@ -8,7 +8,7 @@ import { H1, H3, Body, Caption, Overline } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { LoadingState } from '@/components/LoadingState';
-import { useRecordingService } from '@/native/RecordingService';
+import { useRecordingService, RecordingService } from '@/native/RecordingService';
 import { useRecordingStore } from '@/store/recordingStore';
 import { runRecordPipeline, retryRecordPipeline, userMessageForError } from '@/services/recording/pipeline';
 import { getMicStatus } from '@/services/permissions';
@@ -57,6 +57,7 @@ export function RecordingScreen({
   const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [permissionIssue, setPermissionIssue] = useState<PermissionIssue | null>(null);
+  const [nativeRecState, setNativeRecState] = useState<{ state: string; duration: number; isPaused: boolean; recordingType: string } | null>(null);
   const processingRef = useRef(false);
   const autoStartTriggeredRef = useRef(false);
 
@@ -160,6 +161,10 @@ export function RecordingScreen({
       return;
     }
     setPhase('recording');
+    // Immediate sync: the native service updates its static state synchronously,
+    // but bridge events may not fire on Bridgeless runtime. Call refresh() to pull
+    // the current state from the native service.
+    refresh();
 
     // Place the call only after the recording has begun, while the app is still
     // foregrounded. The foreground service keeps capturing in the background
@@ -172,6 +177,41 @@ export function RecordingScreen({
       });
     }
   }, [permissionGranted, checkPermissions, startRecording, recordingType, autoDialOnStart, dialNumber]);
+
+  const nativeIsRecording = nativeRecState?.state === 'recording' || nativeRecState?.state === 'paused';
+  const isRecording = phase === 'recording' || nativeIsRecording;
+
+  // Polling fallback for state sync when bridge events are unavailable (e.g., Bridgeless runtime).
+  // The native recording service updates its static state, but bridge events may not fire.
+  // This polls getRecordingState() every 1s while recording to keep UI in sync.
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (isRecording) {
+      pollIntervalRef.current = setInterval(() => {
+        RecordingService.getRecordingState().then(nativeState => {
+          if (nativeState && nativeState.state) {
+            setNativeRecState(nativeState);
+            // Also refresh the hook's state to trigger pipeline on stop
+            if (nativeState.state === 'stopped') {
+              refresh();
+            }
+          }
+        });
+      }, 1000);
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isRecording]);
 
   // Used by the call workflow: when a call action was chosen on the setup
   // screen, start recording (and dialing, if requested) automatically on mount.
@@ -196,7 +236,9 @@ export function RecordingScreen({
   const handleStop = useCallback(async () => {
     stopPipelineRef.current?.();
     await stopRecording();
-  }, [stopRecording]);
+    // Ensure hook state syncs with native 'stopped' state to trigger pipeline
+    refresh();
+  }, [stopRecording, refresh]);
 
   const handleRetry = useCallback(async () => {
     if (!activeRecordingId) return;
@@ -209,11 +251,12 @@ export function RecordingScreen({
       processingRef.current = false;
       reset();
       router.replace(`/conversations/${conversationId}`);
-    } catch (error) {
-      setPhase('error');
-      setErrorMessage(userMessageForError(error));
-      processingRef.current = false;
-    }
+} catch (error) {
+        setPhase('error');
+        setErrorMessage(userMessageForError(error));
+        setNativeRecState(null);
+        processingRef.current = false;
+      }
   }, [activeRecordingId, reset, router]);
 
   const handleStartOver = useCallback(() => {
@@ -223,11 +266,10 @@ export function RecordingScreen({
     setErrorMessage(null);
     setPermissionIssue(null);
     setActiveRecordingId(null);
+    setNativeRecState(null);
     reset();
   }, [reset]);
-
-  const isRecording = phase === 'recording' || state.state === 'recording' || state.state === 'paused';
-  const isPaused = state.state === 'paused';
+  const isPaused = nativeRecState?.state === 'paused';
   const showControl = phase === 'idle' || phase === 'recording';
 
   return (

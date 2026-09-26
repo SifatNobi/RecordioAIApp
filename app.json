@@ -17,21 +17,21 @@
         "NSMicrophoneUsageDescription": "RecordioAI uses the microphone to capture conversation audio for transcription and AI analysis."
       }
     },
-"android": {
-    "package": "com.recordioai.app",
-    "versionCode": 2,
-    "adaptiveIcon": {
-      "backgroundColor": "#000000",
-      "foregroundImage": "./assets/android-icon-foreground.png",
-      "backgroundImage": "./assets/android-icon-background.png",
-      "monochromeImage": "./assets/android-icon-monochrome.png"
+    "android": {
+      "package": "com.recordioai.app",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
     },
-    "predictiveBackGestureEnabled": true,
-    "permissions": [
-      "INTERNET",
-      "ACCESS_NETWORK_STATE"
-    ]
-  },
     "web": {
       "favicon": "./assets/favicon.png"
     },
@@ -48,7 +48,8 @@
           "android": {
             "compileSdkVersion": 36,
             "targetSdkVersion": 36,
-            "kotlinVersion": "2.1.20"
+            "kotlinVersion": "2.1.20",
+            "newArchEnabled": false
           }
         }
       ],

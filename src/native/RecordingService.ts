@@ -73,13 +73,17 @@ export const RecordingService: RecordingServiceInterface = {
     }
   },
 
-  async getRecordingState() {
+async getRecordingState() {
     if (!isAndroid || !RecordingServiceModule) {
+      console.warn('[RecordingService] getRecordingState: module unavailable');
       return { state: 'idle', duration: 0, isPaused: false, recordingType: 'conversation' };
     }
     try {
-      return await RecordingServiceModule.getRecordingState();
+      const result = await RecordingServiceModule.getRecordingState();
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+      return parsed;
     } catch (error) {
+      console.error('[RecordingService] getRecordingState error:', error);
       return { state: 'error', duration: 0, isPaused: false, recordingType: 'conversation', error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
@@ -201,8 +205,8 @@ export function useRecordingService() {
       if (nativeState && nativeState.state) {
         updateState(nativeState);
       }
-    } catch {
-      // Ignore transient refresh failures; events keep state fresh.
+    } catch (error) {
+      console.error('[RecordingService] refresh failed:', error);
     }
   }, [updateState]);
 
