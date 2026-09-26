@@ -333,7 +333,18 @@ Append-only record of the "Can't open app file" fix and final artifact validatio
   Standard SAF flow expected to work on real devices.
 
 ### CI status
-- Workflow change is the only CI edit; after push it must produce a UNIVERSAL artifact.
+- Push `316a48c` (universal-APK job + features): run #1 failed on a workflow-file YAML
+  issue (duplicate `run:` key from the edit); fixed in `de2118a` and re-pushed.
+- Push `de2118a`: run #2 SUCCESS (validate + build-android green).
+- EXACT GitHub artifact `RecordioAI-debug-teststore.apk` (251,862,880 B ≈ 240.2 MB):
+  SHA-256 `3D09FEABEBD1F7D41038963421B192CB05C8704FCEBFFB6052F1C1EB69E53291`,
+  apksigner v2 verified (1 signer), package `com.recordioai.app` versionCode 2
+  versionName 1.0.0 targetSdk 36, `native-code: arm64-v8a armeabi-v7a x86 x86_64`
+  (UNIVERSAL — all 4 ABIs incl. x86_64), prod API URL inlined / no mock leftovers.
+  Installed on the Android 16 x86_64 AVD with `adb install -r` → `Success`, launched
+  (pid alive, `topResumedActivity=MainActivity`, no FATAL), Home rendered.
+  (NaN-byte difference vs. the local build `26C6A6CC…` is expected: different build
+  environments; both artifacts independently pass the same full validation.)
 - Production `api.recordioai.com` has no public DNS — set up the real backend and a staging
   `.env` then rebuild to exercise transcription against production; the client pipeline is
   already proven against a contract-matching stub.
