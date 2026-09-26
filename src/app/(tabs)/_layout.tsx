@@ -19,6 +19,7 @@ export default function TabLayout() {
     return null;
   }
 
+  // Tab bar content height + system navigation bar inset + small buffer
   const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, 8);
 
   return (

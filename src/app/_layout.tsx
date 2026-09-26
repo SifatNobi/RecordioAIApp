@@ -30,7 +30,7 @@ const CONTENT_STYLE = { backgroundColor: backgroundPrimary };
 
 const useIoniconsFont = () =>
   Font.useFonts({
-    ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
+    Ionicons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
   });
 
 export default function RootLayout() {
