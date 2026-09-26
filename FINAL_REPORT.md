@@ -355,3 +355,51 @@ Status: [1/10] repo state verified — [2/10] final source + workflow edits in p
 [7/10] launched, no fatal, UI rendered — [8/10] core record flow & conversation browsing
 verified on final build (full transcribe only vs mock; prod DNS documented) —
 [9/10] pushed to main + CI — [10/10] exact GitHub artifact hash-compared & verified.
+
+## 17. App icon from supplied artwork + CI build-once fast-fail session
+
+Source: `logo.jpeg` (1600×1600) supplied as the official artwork. It is read-only
+programmatically (autocrop via pixel analysis, no visual redesign).
+
+### Icon implementation (survives `expo prebuild --clean` in CI)
+- `assets/icon.png` (1024²): artwork, autocropped of the outer black margin
+  (content box 1355×905 from bbox (116,360)-(1470,1264)), aspect-fit on the sampled
+  backdrop color (near-black (0,1,0)) — squared without distortion, no white/black box.
+- `assets/android-icon-foreground.png` (1024²): artwork fitted to the adaptive-icon
+  safe zone (≤0.62 ratio) centered on a transparent canvas.
+- `assets/android-icon-background.png` (1024²): solid sampled backdrop color.
+- `assets/android-icon-monochrome.png` (1024²): white silhouette alpha mask for themed icons.
+- `app.json` unchanged: `icon` + `android.adaptiveIcon.{backgroundColor,foreground,
+  background,monochrome}` already reference these files, so prebuild regenerates:
+  `mipmap-mdpi…xxxhdpi/ic_launcher{,round,foreground,background,monochrome}.webp` +
+  `mipmap-anydpi-v26/ic_launcher.xml(:round)`; manifest has `android:icon="@mipmap/ic_launcher"`
+  and `android:roundIcon="@mipmap/ic_launcher_round"`.
+
+### Verifications performed
+- Local build: `assembleDebug` with the new icon → SUCCESS, then on the EXACT APK:
+  badging shows `application-icon-*: res/mipmap-anydpi-v26/ic_launcher.xml`; density
+  webp + round + foreground resources packaged; signature OK; universal 4 ABIs.
+- Launcher pixel test (Android 16 x86_64 emulator): on-screen launcher/cell icon average
+  RGB (30,55,143) vs artwork center (31,56,146) → distance 3. The supplied image IS the
+  displayed launcher icon (not the default).
+- GitHub CI artifact (`RecordioAI-debug-teststore.apk`, run `36226394994`): same badging
+  (adaptive icon, universal 4 ABIs, pkg/version), zip OK, apksigner v2 OK, prod URL
+  inlined / no mock, icon resources present. Installed with `adb install -r` → Success,
+  launched (MainActivity resumed, no FATAL), Home rendered, launcher icon pixels == artwork.
+
+### CI workflow reliability (`.github/workflows/android.yml`)
+- Exactly ONE authoritative `assembleDebug`; the verify step is read-only on that exact APK
+  (`unzip -t`, bundle+prod-URL check, `aapt2` badging for package/version/4-ABI,
+  `libreactnative.so` per ABI, adaptive+density icon resources, `apksigner`, `sha256sum`).
+- Removed `expo/expo-github-action` (prebuild now runs from the local CLI).
+- `gradle-home-cache-cleanup: false` on `gradle/actions/setup-gradle` (kills the slow
+  "Post Setup Gradle" housekeeping); per-job `timeout-minutes` (validate 15, build 240);
+  `concurrency.cancel-in-progress`; `--stacktrace` to surface real errors.
+- Result: push `b098221` → run `36226394994` completed SUCCESS.
+
+### Status lines
+[1/10] audit + repo verified — [2/10] single authoritative build step kept —
+[3/10] local icon build green — [4/10] APK verified (icon/universal/signature) —
+[5/10] icon wired for all densities + adaptive — [6/10] emulator launcher shows artwork —
+[7/10] workflow fail-fast + no slow post-steps — [8/10] CI run SUCCESS —
+[9/10] exact CI artifact verified — [10/10] CI artifact installed + icon verified.
