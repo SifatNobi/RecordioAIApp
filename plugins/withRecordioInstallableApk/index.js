@@ -8,9 +8,9 @@ const SIGNING_BLOCK = `
 // ${SIGNING_MARKER}
 android {
     signingConfigs.all { sc ->
-        sc.enableV1SigningEnabled = true
-        sc.enableV2SigningEnabled = true
-        sc.enableV3SigningEnabled = true
+        sc.v1SigningEnabled = true
+        sc.v2SigningEnabled = true
+        sc.enableV3Signing = true
     }
 }
 `;
