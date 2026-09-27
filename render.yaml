@@ -1,7 +1,7 @@
 services:
   - type: web
     name: recordioai-backend
-    runtime: python
+    runtime: python-3.13
     region: oregon
     plan: starter
     buildCommand: pip install -r requirements.txt
