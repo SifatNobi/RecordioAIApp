@@ -15,8 +15,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 import httpx
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
+from emergentintegrations_replacement import LlmChat, UserMessage, OpenAISpeechToText
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
