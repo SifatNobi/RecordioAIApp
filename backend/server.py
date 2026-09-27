@@ -526,6 +526,11 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 async def _startup():
     await db.users.create_index("email", unique=True)
