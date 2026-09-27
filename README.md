@@ -253,4 +253,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - Email: support@recordioai.com
 - Documentation: https://docs.recordioai.com
-- Issues: https://github.com/your-org/recordioai/issues
+- Issues: https://github.com/your-org/recordioai/issues#   R e n d e r   d e p l o y m e n t   t r i g g e r  
+ 
