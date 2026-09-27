@@ -79,11 +79,11 @@
         }
       ]
     ],
+    "owner": "kazinobi",
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "c99489ca-d611-4810-88ef-2a97477f7af4"
       }
-    },
-    "owner": "your-expo-username"
+    }
   }
 }

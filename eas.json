@@ -19,7 +19,6 @@
       }
     },
     "production": {
-      "autoIncrement": true,
       "android": {
         "gradleCommand": ":app:assembleRelease",
         "buildType": "apk"
