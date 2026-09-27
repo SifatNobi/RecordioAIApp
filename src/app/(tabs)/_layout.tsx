@@ -26,6 +26,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
+        sceneStyle: styles.scene,
         tabBarActiveTintColor: Theme.colors.primaryBlue,
         tabBarInactiveTintColor: Theme.colors.textMuted,
         tabBarLabelPosition: 'below-icon',
@@ -64,6 +65,9 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  scene: {
+    backgroundColor: Theme.colors.backgroundPrimary,
+  },
   bar: {
     backgroundColor: Theme.colors.backgroundPrimary,
     borderTopWidth: StyleSheet.hairlineWidth,

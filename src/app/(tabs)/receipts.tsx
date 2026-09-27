@@ -150,6 +150,7 @@ function formatDuration(seconds?: number): string {
 const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
+    backgroundColor: Theme.colors.backgroundPrimary,
   },
   content: {
     paddingHorizontal: Theme.spacing[5],
