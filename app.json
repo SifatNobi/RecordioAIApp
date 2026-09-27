@@ -54,6 +54,7 @@
       "expo-font",
       "./plugins/withRecordioRecording",
       "./plugins/withRecordioTestBundle",
+      "./plugins/withRecordioInstallableApk",
       [
         "expo-build-properties",
         {
