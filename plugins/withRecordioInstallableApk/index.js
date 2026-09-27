@@ -7,12 +7,10 @@ const SIGNING_MARKER = 'recordioaiInstallableSigning';
 const SIGNING_BLOCK = `
 // ${SIGNING_MARKER}
 android {
-    signingConfigs {
-        release {
-            enableV1SigningEnabled true
-            enableV2SigningEnabled true
-            enableV3SigningEnabled true
-        }
+    signingConfigs.all { sc ->
+        sc.enableV1SigningEnabled = true
+        sc.enableV2SigningEnabled = true
+        sc.enableV3SigningEnabled = true
     }
 }
 `;
