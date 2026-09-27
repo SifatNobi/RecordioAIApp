@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: recordioai-backend
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: EMERGENT_LLM_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+    autoDeploy: true
+    rootDir: backend
