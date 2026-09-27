@@ -1,14 +1,13 @@
 services:
   - type: web
     name: recordioai-backend
-    runtime: python-3.13
+    runtime: docker
     region: oregon
     plan: starter
-    buildCommand: pip install -r requirements.txt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.13.7
       - key: MONGO_URL
         sync: false
       - key: DB_NAME
