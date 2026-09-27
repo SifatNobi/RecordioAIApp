@@ -8,6 +8,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Print exact Python version at build time for Render build-log verification
+RUN python --version && python -c "import sys; print(sys.version)"
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
