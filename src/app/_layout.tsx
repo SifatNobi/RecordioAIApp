@@ -2,6 +2,7 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Providers } from '@/components/Providers';
 import { useAppStore } from '@/store/appStore';
@@ -78,6 +79,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <Providers>
+        <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false, contentStyle: CONTENT_STYLE }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(tabs)" />
