@@ -381,6 +381,11 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
         transcript = (transcript or "").strip()
     except Exception as e:
         logger.error("Transcription failed: %s", str(e))
+        global LAST_TRANSCRIBE_ERROR
+        LAST_TRANSCRIBE_ERROR = {
+            "type": type(e).__name__,
+            "message": re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:300],
+        }
         raise HTTPException(status_code=502, detail="Transcription service failed. Please try again or paste the transcript manually.")
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -607,7 +612,8 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
                 "X-Analyze-Detail": message,
             },
         )
-    LAST_ANALYZE_ERROR = None
+LAST_ANALYZE_ERROR = None
+LAST_TRANSCRIBE_ERROR = None
 
     import uuid
     now = datetime.now(timezone.utc).isoformat()
@@ -690,7 +696,7 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
 @api.get("/debug/analyze-last-error")
 async def analyze_last_error(user=Depends(get_current_user)):
     """Temporary bring-up aid: returns the most recent /api/analyze failure."""
-    return {"lastAnalyzeError": LAST_ANALYZE_ERROR}
+    return {"lastAnalyzeError": LAST_ANALYZE_ERROR, "lastTranscribeError": LAST_TRANSCRIBE_ERROR}
 
 
 @api.get("/debug/gemini-models")
