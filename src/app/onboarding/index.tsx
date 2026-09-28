@@ -34,7 +34,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     id: 1,
     title: 'Connect Your AI Agent.',
     description:
-      'Integrate with your AI voice agent platform. RecordioAI receives conversation data directly from supported providers — no manual recording required.',
+        'Integrate with your AI voice agent platform. RecordioAI receives conversation data directly from supported providers - no manual recording required.',
     icon: 'hardware-chip',
     primaryColor: Theme.colors.brightBlue,
   },
@@ -42,7 +42,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     id: 2,
     title: 'Every Conversation Gets a Receipt.',
     description:
-      'Each conversation generates a Conversation Receipt with transcript, extracted products, prices, fees, promises, and commitments — all signed and verifiable.',
+        'Each conversation generates a Conversation Receipt with transcript, extracted products, prices, fees, promises, and commitments - all signed and verifiable.',
     icon: 'document-text',
     primaryColor: Theme.colors.cyanAccent,
   },
@@ -58,7 +58,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     id: 4,
     title: 'Allow Recording on This Device.',
     description:
-      'To record live conversations from this screen, RecordioAI needs microphone access. You can grant it now or continue without — you can always enable it later in Settings.',
+        'To record live conversations from this screen, RecordioAI needs microphone access. You can grant it now or continue without - you can always enable it later in Settings.',
     icon: 'mic',
     primaryColor: Theme.colors.warning,
     isPermissions: true,
@@ -184,7 +184,7 @@ export default function OnboardingScreen() {
                   <Caption color="textPrimary" weight="semiBold">Microphone access</Caption>
                   <Caption color="textMuted">
                     {permState?.microphone === 'granted'
-                      ? 'Granted — live recording is available.'
+                      ? 'Granted - live recording is available.'
                       : permState?.microphone === 'never_ask_again'
                       ? 'Blocked in system Settings. Enable it there to record live calls.'
                       : 'Not granted yet.'}

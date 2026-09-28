@@ -46,7 +46,7 @@ export default function CreateRecordScreen() {
     {
       id: 'phone-call',
       title: 'Phone Call',
-      description: 'Capture a call through the device microphone. Android cannot record both call sides directly — see the on-screen notes.',
+      description: 'Capture a call through the device microphone. Android cannot record both call sides directly; see the on-screen notes.',
       icon: 'call',
       color: Theme.colors.cyanAccent,
       onPress: handlePhoneCall,

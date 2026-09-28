@@ -316,7 +316,7 @@ export async function transcribeAudio(
 
     if (typeof data.transcript !== 'string' || data.transcript.trim() === '') {
       throw new TranscriptionError(
-        'Transcription returned empty result. The recording may contain no speech — please try again.',
+        'Transcription returned empty result. The recording may contain no speech. Please try again.',
         TranscriptionErrorCode.EMPTY_TRANSCRIPT,
         response.status
       );

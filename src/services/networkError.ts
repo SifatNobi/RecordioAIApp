@@ -147,7 +147,7 @@ export function describeTransportFailure(
     case 'tls':
       return `A secure connection to the server could not be established. ${action}`;
     case 'dns':
-      return `The RecordioAI service address could not be resolved, so the request was never sent. The service may be temporarily unavailable — ${action}`;
+      return `The RecordioAI service address could not be resolved, so the request was never sent. The service may be temporarily unavailable. ${action}`;
     default:
       return `The request could not be completed. ${action}`;
   }

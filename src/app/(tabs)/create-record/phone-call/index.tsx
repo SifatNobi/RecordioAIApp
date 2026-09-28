@@ -92,7 +92,7 @@ export default function PhoneCallScreen() {
                 <View style={styles.capabilityRow}>
                   <Ionicons name="call" size={20} color={Theme.colors.textOnPrimary} />
                   <Body color="textOnPrimary" style={styles.capabilityText}>
-                    Calling {numberInput.trim()} — recording starts automatically and continues
+                    Calling {numberInput.trim()} - recording starts automatically and continues
                     in the background while the dialer is open.
                   </Body>
                 </View>
