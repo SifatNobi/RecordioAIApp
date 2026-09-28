@@ -496,6 +496,7 @@ async def _extract(transcript: str) -> "tuple[Extraction, str]":
     used_model = None
     data = None
     last_rejection = None
+    rejections = []
     for model in candidates:
         try:
             data = await _call_gemini(model, prompt)
@@ -503,10 +504,12 @@ async def _extract(transcript: str) -> "tuple[Extraction, str]":
             break
         except _GeminiModelRejected as e:
             last_rejection = e
+            rejections.append({"model": model, "status": e.status})
             logger.warning("Gemini model %s rejected (HTTP %s), trying fallback", model, e.status)
             continue
     if data is None:
         assert last_rejection is not None
+        last_rejection.rejections = rejections
         raise last_rejection
 
     try:
@@ -590,7 +593,11 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         # can be classified during bring-up. The app never surfaces this text.
         message = re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:400]
         global LAST_ANALYZE_ERROR
-        LAST_ANALYZE_ERROR = {"type": type(e).__name__, "message": message}
+        LAST_ANALYZE_ERROR = {
+            "type": type(e).__name__,
+            "message": message,
+            "rejections": getattr(e, "rejections", None),
+        }
         raise HTTPException(
             status_code=502,
             detail=message or "AI analysis failed. Please try again later.",
@@ -683,6 +690,21 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
 async def analyze_last_error(user=Depends(get_current_user)):
     """Temporary bring-up aid: returns the most recent /api/analyze failure."""
     return {"lastAnalyzeError": LAST_ANALYZE_ERROR}
+
+
+@api.get("/debug/gemini-models")
+async def debug_gemini_models(user=Depends(get_current_user)):
+    """Temporary bring-up aid: lists model names this project's key can access."""
+    url = "https://generativelanguage.googleapis.com/v1beta/models"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=6.0)) as client:
+            resp = await client.get(url, params={"key": EMERGENT_LLM_KEY, "pageSize": 100})
+        if resp.status_code != 200:
+            return {"models": [], "error": f"HTTP {resp.status_code}"}
+        names = [m.get("name", "") for m in resp.json().get("models", [])]
+    except Exception as e:
+        return {"models": [], "error": f"{type(e).__name__}: {str(e)[:200]}"}
+    return {"models": names[:60], "count": len(names)}
 
 
 # ---------------------------------------------------------------------------
