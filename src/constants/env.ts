@@ -1,4 +1,17 @@
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.recordioai.com/v1';
+/**
+ * Backend API root.
+ *
+ * The FastAPI service mounts its router at `/api` (see `backend/server.py`,
+ * `APIRouter(prefix="/api")`), so requests are issued as `<root>/api/transcribe`
+ * and `<root>/api/analyze`. The previous `/v1` default never matched the
+ * backend contract. Override the host (for example while a deployment is being
+ * provisioned) with EXPO_PUBLIC_API_BASE_URL; a trailing slash is tolerated and
+ * normalised away so callers can safely append `/transcribe`.
+ */
+const rawApiBaseUrl =
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.recordioai.com';
+
+export const API_BASE_URL = `${rawApiBaseUrl.replace(/\/+$/, '')}/api`;
 
 // Public RevenueCat Test Store SDK key for the RecordioAIApp project. Configured
 // via EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY where available, falling back to the

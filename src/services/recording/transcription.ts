@@ -1,5 +1,9 @@
 import { API_BASE_URL } from '@/constants/env';
 import { ApiError } from '@/services/api';
+import {
+  classifyTransportError,
+  describeTransportFailure,
+} from '@/services/networkError';
 
 export enum TranscriptionErrorCode {
   NETWORK_UNAVAILABLE = 'NETWORK_UNAVAILABLE',
@@ -67,6 +71,8 @@ export interface TranscriptionOptions {
 
 const TRANSCRIPTION_TIMEOUT = 120000;
 
+const RETRY_ACTION = 'Please try again.';
+
 function isAbortError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -79,13 +85,6 @@ function classifyError(error: unknown): TranscriptionError {
     return new TranscriptionError(
       'Request timed out. Please try again.',
       TranscriptionErrorCode.REQUEST_TIMEOUT
-    );
-  }
-
-  if (error instanceof TypeError && error.message.includes('Network')) {
-    return new TranscriptionError(
-      'Network unavailable. Check your connection and try again.',
-      TranscriptionErrorCode.NETWORK_UNAVAILABLE
     );
   }
 
@@ -135,7 +134,7 @@ function classifyError(error: unknown): TranscriptionError {
         );
       default:
         return new TranscriptionError(
-          error.message || `Request failed with status ${error.status}`,
+          `Transcription failed (error ${error.status}). ${RETRY_ACTION}`,
           TranscriptionErrorCode.UNKNOWN_ERROR,
           error.status,
           error.details
@@ -143,16 +142,22 @@ function classifyError(error: unknown): TranscriptionError {
     }
   }
 
-  if (error instanceof Error) {
-    if (error.message.includes('timeout')) {
-      return new TranscriptionError(
-        'Request timed out. Please try again.',
-        TranscriptionErrorCode.REQUEST_TIMEOUT
-      );
-    }
+  // Anything that is not a typed API/HTTP error is a transport-level failure.
+  // Map it through the shared classifier so a raw Java/OkHttp message such as
+  // "fetch failed: java.net.UnknownHostException: ..." is never shown.
+  if (error instanceof TranscriptionError) {
+    return error;
+  }
+
+  if (error instanceof Error || error instanceof TypeError) {
+    const failure = classifyTransportError(error);
     return new TranscriptionError(
-      error.message,
-      TranscriptionErrorCode.UNKNOWN_ERROR
+      describeTransportFailure(failure, RETRY_ACTION),
+      failure.kind === 'aborted' || failure.kind === 'timeout'
+        ? TranscriptionErrorCode.REQUEST_TIMEOUT
+        : TranscriptionErrorCode.NETWORK_UNAVAILABLE,
+      undefined,
+      { transport: failure.kind }
     );
   }
 
@@ -290,22 +295,42 @@ export async function transcribeAudio(
       );
     }
 
-    const data = await response.json();
-
-    if (!data.transcript || data.transcript.trim() === '') {
+    let data: Record<string, unknown>;
+    try {
+      data = (await response.json()) as Record<string, unknown>;
+    } catch {
       throw new TranscriptionError(
-        'Transcription returned empty result',
-        TranscriptionErrorCode.EMPTY_TRANSCRIPT
+        'The transcription service returned a response that could not be read. Please try again.',
+        TranscriptionErrorCode.MALFORMED_RESPONSE,
+        response.status
       );
     }
 
+    if (!data || typeof data !== 'object') {
+      throw new TranscriptionError(
+        'The transcription service returned an unexpected response. Please try again.',
+        TranscriptionErrorCode.MALFORMED_RESPONSE,
+        response.status
+      );
+    }
+
+    if (typeof data.transcript !== 'string' || data.transcript.trim() === '') {
+      throw new TranscriptionError(
+        'Transcription returned empty result. The recording may contain no speech — please try again.',
+        TranscriptionErrorCode.EMPTY_TRANSCRIPT,
+        response.status
+      );
+    }
+
+    const raw = data as Record<string, any>;
+
     return {
       transcript: data.transcript,
-      language: data.language || options.language || 'en',
-      confidence: data.confidence ?? 0.9,
-      segments: data.segments || [],
-      provider: data.provider || 'unknown',
-      providerId: data.providerId || '',
+      language: typeof raw.language === 'string' ? raw.language : options.language || 'en',
+      confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.9,
+      segments: Array.isArray(raw.segments) ? raw.segments : [],
+      provider: typeof raw.provider === 'string' ? raw.provider : 'unknown',
+      providerId: typeof raw.providerId === 'string' ? raw.providerId : '',
     };
   } catch (error) {
     clearTimeout(timeoutId);

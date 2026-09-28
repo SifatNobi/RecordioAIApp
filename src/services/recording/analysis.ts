@@ -1,5 +1,9 @@
 import { API_BASE_URL } from '@/constants/env';
 import { ApiError } from '@/services/api';
+import {
+  classifyTransportError,
+  describeTransportFailure,
+} from '@/services/networkError';
 import { ConversationAnalysis } from '@/types';
 
 export enum AnalysisErrorCode {
@@ -44,6 +48,8 @@ export interface AnalysisResult {
 
 const ANALYSIS_TIMEOUT = 180000;
 
+const RETRY_ACTION = 'Please try again.';
+
 function isAbortError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -56,13 +62,6 @@ function classifyError(error: unknown): AnalysisError {
     return new AnalysisError(
       'Analysis request timed out. Please try again.',
       AnalysisErrorCode.REQUEST_TIMEOUT
-    );
-  }
-
-  if (error instanceof TypeError && error.message.includes('Network')) {
-    return new AnalysisError(
-      'Network unavailable. Check your connection and try again.',
-      AnalysisErrorCode.NETWORK_UNAVAILABLE
     );
   }
 
@@ -105,7 +104,7 @@ function classifyError(error: unknown): AnalysisError {
         );
       default:
         return new AnalysisError(
-          error.message || `Request failed with status ${error.status}`,
+          `Analysis failed (error ${error.status}). ${RETRY_ACTION}`,
           AnalysisErrorCode.UNKNOWN_ERROR,
           error.status,
           error.details
@@ -113,16 +112,22 @@ function classifyError(error: unknown): AnalysisError {
     }
   }
 
-  if (error instanceof Error) {
-    if (error.message.includes('timeout')) {
-      return new AnalysisError(
-        'Analysis request timed out. Please try again.',
-        AnalysisErrorCode.REQUEST_TIMEOUT
-      );
-    }
+  if (error instanceof AnalysisError) {
+    return error;
+  }
+
+  // Map transport failures through the shared classifier so raw Java/OkHttp
+  // messages (e.g. "fetch failed: java.net.UnknownHostException: ...") are
+  // never rendered to the user.
+  if (error instanceof Error || error instanceof TypeError) {
+    const failure = classifyTransportError(error);
     return new AnalysisError(
-      error.message,
-      AnalysisErrorCode.UNKNOWN_ERROR
+      describeTransportFailure(failure, RETRY_ACTION),
+      failure.kind === 'aborted' || failure.kind === 'timeout'
+        ? AnalysisErrorCode.REQUEST_TIMEOUT
+        : AnalysisErrorCode.NETWORK_UNAVAILABLE,
+      undefined,
+      { transport: failure.kind }
     );
   }
 
@@ -182,42 +187,58 @@ export async function analyzeTranscript(request: AnalysisRequest): Promise<Analy
       );
     }
 
-    const data = await response.json();
-
-    if (!data.analysis) {
+    let data: Record<string, unknown>;
+    try {
+      data = (await response.json()) as Record<string, unknown>;
+    } catch {
       throw new AnalysisError(
-        'Analysis returned empty result',
-        AnalysisErrorCode.ANALYSIS_PROVIDER_ERROR
+        'The analysis service returned a response that could not be read. Please try again.',
+        AnalysisErrorCode.MALFORMED_RESPONSE,
+        response.status
       );
     }
 
+    if (!data || typeof data !== 'object' || !data.analysis) {
+      throw new AnalysisError(
+        'The analysis service returned an unexpected response. Please try again.',
+        AnalysisErrorCode.MALFORMED_RESPONSE,
+        response.status
+      );
+    }
+
+    const raw = data.analysis as Partial<ConversationAnalysis> & Record<string, unknown>;
+    const modelVersion =
+      typeof data.modelVersion === 'string' ? data.modelVersion : 'unknown';
+    const provider =
+      typeof data.provider === 'string' ? data.provider : 'recordioai';
+
     const analysis: ConversationAnalysis = {
-      id: data.analysis.id || `analysis_${Date.now()}`,
+      id: raw.id || `analysis_${Date.now()}`,
       conversationId: request.conversationId || `conv_${Date.now()}`,
-      products: data.analysis.products || [],
-      prices: data.analysis.prices || [],
-      fees: data.analysis.fees || [],
-      commitments: data.analysis.commitments || [],
-      discrepancies: data.analysis.discrepancies || [],
-      summary: data.analysis.summary || '',
-      keyPoints: data.analysis.keyPoints || [],
-      sentiment: data.analysis.sentiment || {
+      products: raw.products || [],
+      prices: raw.prices || [],
+      fees: raw.fees || [],
+      commitments: raw.commitments || [],
+      discrepancies: raw.discrepancies || [],
+      summary: raw.summary || '',
+      keyPoints: raw.keyPoints || [],
+      sentiment: raw.sentiment || {
         overall: 'neutral',
         customer: 'neutral',
         agent: 'neutral',
         score: 0,
       },
-      language: data.analysis.language || request.language || 'en',
-      confidence: data.analysis.confidence ?? 0.85,
-      modelVersion: data.modelVersion || 'unknown',
+      language: raw.language || request.language || 'en',
+      confidence: raw.confidence ?? 0.85,
+      modelVersion,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     return {
       analysis,
-      provider: data.provider || 'recordioai',
-      modelVersion: data.modelVersion || 'unknown',
+      provider,
+      modelVersion,
     };
   } catch (error) {
     clearTimeout(timeoutId);

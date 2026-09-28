@@ -85,12 +85,14 @@ export default function CreateRecordScreen() {
             <View style={styles.optionIcon}>
               <Ionicons name={option.icon} size={32} color={option.color} />
             </View>
-            <H3 weight="semiBold" color="textPrimary" style={styles.optionTitle}>
-              {option.title}
-            </H3>
-            <Body color="textSecondary" style={styles.optionDescription}>
-              {option.description}
-            </Body>
+            <View style={styles.optionText}>
+              <H3 weight="semiBold" color="textPrimary" style={styles.optionTitle}>
+                {option.title}
+              </H3>
+              <Body color="textSecondary" style={styles.optionDescription}>
+                {option.description}
+              </Body>
+            </View>
             <View style={styles.optionArrow}>
               <Ionicons name="chevron-forward" size={24} color={Theme.colors.textMuted} />
             </View>
@@ -98,7 +100,7 @@ export default function CreateRecordScreen() {
         ))}
       </View>
 
-      <View style={styles.bottomSpacer} />
+      <View style={[styles.bottomSpacer, { height: 24 + insets.bottom }]} />
     </ScrollView>
   );
 }
@@ -134,17 +136,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // The title/description share a flexible column so neither can push the
+  // other (or the chevron) outside the card on narrow screens. Previously the
+  // title was a direct row child with no shrink, so on a 360dp-wide device the
+  // 28px title plus icon, gaps and chevron exceeded the card's content width
+  // and the text was clipped out of view by the scroll viewport.
+  optionText: {
+    flex: 1,
+    flexShrink: 1,
+  },
   optionTitle: {
     marginBottom: Theme.spacing[1],
   },
   optionDescription: {
-    flex: 1,
     lineHeight: 22,
   },
   optionArrow: {
     marginLeft: Theme.spacing[2],
   },
   bottomSpacer: {
-    height: 40,
+    height: 24,
   },
 });
