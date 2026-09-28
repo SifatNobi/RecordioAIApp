@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '@/constants/env';
 import { ApiError } from '@/services/api';
+import { authedFetch, MobileAuthError } from '@/services/auth/deviceAuth';
 import {
   classifyTransportError,
   describeTransportFailure,
@@ -112,6 +113,13 @@ function classifyError(error: unknown): AnalysisError {
     }
   }
 
+  if (error instanceof MobileAuthError) {
+    return new AnalysisError(
+      error.message,
+      AnalysisErrorCode.AUTHENTICATION_ERROR
+    );
+  }
+
   if (error instanceof AnalysisError) {
     return error;
   }
@@ -156,7 +164,7 @@ export async function analyzeTranscript(request: AnalysisRequest): Promise<Analy
   const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/analyze`, {
+    const response = await authedFetch(`${API_BASE_URL}/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

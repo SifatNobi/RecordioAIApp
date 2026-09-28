@@ -11,7 +11,7 @@ import Constants from 'expo-constants';
  * normalised away so callers can safely append `/transcribe`.
  */
 const rawApiBaseUrl =
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.recordioai.com';
+  process.env.EXPO_PUBLIC_API_BASE_URL || 'https://recordioaiapp.onrender.com';
 
 export const API_BASE_URL = `${rawApiBaseUrl.replace(/\/+$/, '')}/api`;
 

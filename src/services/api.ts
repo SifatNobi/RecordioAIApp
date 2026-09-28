@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/constants/env';
+import { authedFetch } from '@/services/auth/deviceAuth';
 
 class ApiError extends Error {
   constructor(
@@ -18,7 +19,7 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const response = await fetch(url, {
+  const response = await authedFetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

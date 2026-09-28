@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '@/constants/env';
 import { ApiError } from '@/services/api';
+import { authedFetch, MobileAuthError } from '@/services/auth/deviceAuth';
 import {
   classifyTransportError,
   describeTransportFailure,
@@ -145,6 +146,13 @@ function classifyError(error: unknown): TranscriptionError {
   // Anything that is not a typed API/HTTP error is a transport-level failure.
   // Map it through the shared classifier so a raw Java/OkHttp message such as
   // "fetch failed: java.net.UnknownHostException: ..." is never shown.
+  if (error instanceof MobileAuthError) {
+    return new TranscriptionError(
+      error.message,
+      TranscriptionErrorCode.AUTHENTICATION_ERROR
+    );
+  }
+
   if (error instanceof TranscriptionError) {
     return error;
   }
@@ -269,7 +277,7 @@ export async function transcribeAudio(
   const timeoutId = setTimeout(() => controller.abort(), TRANSCRIPTION_TIMEOUT);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/transcribe`, {
+    const response = await authedFetch(`${API_BASE_URL}/transcribe`, {
       method: 'POST',
       body,
       headers: {

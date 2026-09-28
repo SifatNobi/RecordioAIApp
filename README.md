@@ -140,7 +140,7 @@ npm run ios
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY` | Yes | RevenueCat public SDK key for Android |
-| `EXPO_PUBLIC_API_BASE_URL` | No | Backend API base URL (default: `https://api.recordioai.com/v1`) |
+| `EXPO_PUBLIC_API_BASE_URL` | No | Backend API base URL (default: `https://recordioaiapp.onrender.com`) |
 | `EXPO_PUBLIC_ENVIRONMENT` | No | `development` \| `staging` \| `production` |
 
 ### RevenueCat Configuration

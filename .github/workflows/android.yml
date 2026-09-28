@@ -106,8 +106,8 @@ jobs:
 
           # 2. Production API bundle is packaged (self-contained, no Metro) and inlines the
           #    production endpoint.
-          if unzip -p "$APK" assets/index.android.bundle | grep -q 'https://api.recordioai.com'; then
-            echo "Verified: assets/index.android.bundle packaged + production api.recordioai.com inlined"
+          if unzip -p "$APK" assets/index.android.bundle | grep -q 'https://recordioaiapp.onrender.com'; then
+            echo "Verified: assets/index.android.bundle packaged + production recordioaiapp.onrender.com inlined"
           else
             echo "::error::assets/index.android.bundle missing or production URL absent"; exit 1
           fi

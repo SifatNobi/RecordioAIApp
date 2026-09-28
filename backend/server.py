@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import secrets
 import hashlib
 import logging
 import tempfile
@@ -47,11 +48,35 @@ class SessionRequest(BaseModel):
     session_id: str
 
 
+class DeviceRegisterRequest(BaseModel):
+    device_id: str
+    device_name: str = ""
+
+
+class DeviceLoginRequest(BaseModel):
+    device_id: str
+    device_secret: str
+
+
+class AnalyzeRequest(BaseModel):
+    transcript: str
+    language: Optional[str] = "en"
+    conversationId: Optional[str] = ""
+
+
 class Commitment(BaseModel):
     category: str = ""
     commitment: str = ""
     quote: str = ""
     speaker: str = ""
+
+
+class ExtractedDiscrepancy(BaseModel):
+    category: str = ""
+    commitment: str = ""
+    quote: str = ""
+    speaker: str = ""
+    severity: str = "low"
 
 
 class Extraction(BaseModel):
@@ -62,6 +87,7 @@ class Extraction(BaseModel):
     dates_or_deadlines: List[Commitment] = Field(default_factory=list)
     warranties_or_disclosures: List[Commitment] = Field(default_factory=list)
     cancellations_or_changes: List[Commitment] = Field(default_factory=list)
+    discrepancies: List[ExtractedDiscrepancy] = Field(default_factory=list)
 
 
 class RecordCreate(BaseModel):
@@ -159,6 +185,127 @@ async def create_session(body: SessionRequest):
     }
 
 
+# ---------------------------------------------------------------------------
+# Mobile device authentication
+#
+# A standalone Android APK cannot carry an Emergent session_id, so mobile
+# clients authenticate with their own per-install credential instead. The app
+# generates a random device_id and a high-entropy device_secret, registers the
+# device once, and stores ONLY its own secret on the device. The backend stores
+# only the SHA-256 hash of that secret and issues the same session_token model
+# the Emergent flow uses. Server-side secrets (MONGO_URL, EMERGENT_LLM_KEY)
+# never leave Render.
+# ---------------------------------------------------------------------------
+DEVICE_SESSION_DAYS = 90
+
+
+def _device_user_id(device_id: str) -> str:
+    return "dev_" + hashlib.sha256(device_id.encode("utf-8")).hexdigest()[:20]
+
+
+def _mint_device_token(user_id: str) -> str:
+    from pymongo.errors import DuplicateKeyError
+
+    sessions = db.user_sessions
+    now = datetime.now(timezone.utc)
+    while True:
+        token = secrets.token_urlsafe(32)
+        try:
+            sessions.insert_one({
+                "session_token": token,
+                "user_id": user_id,
+                "created_at": now,
+                "expires_at": now + timedelta(days=DEVICE_SESSION_DAYS),
+            })
+            return token
+        except DuplicateKeyError:
+            # session_token collision is effectively impossible; retry with a
+            # fresh token rather than crashing the request.
+            continue
+
+
+@api.post("/auth/device/register")
+async def device_register(body: DeviceRegisterRequest):
+    device_id = (body.device_id or "").strip()
+    if not device_id:
+        raise HTTPException(status_code=422, detail="device_id is required.")
+    if len(device_id) > 200:
+        raise HTTPException(status_code=422, detail="device_id is too long.")
+
+    user_id = _device_user_id(device_id)
+    device_secret = secrets.token_urlsafe(32)
+    secret_hash = hashlib.sha256(device_secret.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc)
+    name = (body.device_name or "Mobile Device").strip()
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {"user_id": user_id, "name": name, "updated_at": now},
+            "$setOnInsert": {
+                "email": f"{user_id}@devices.recordioai.invalid",
+                "picture": "",
+                "created_at": now,
+            },
+        },
+        upsert=True,
+    )
+
+    await db.devices.update_one(
+        {"device_id": device_id},
+        {
+            "$set": {
+                "user_id": user_id,
+                "secret_hash": secret_hash,
+                "name": name,
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+
+    session_token = _mint_device_token(user_id)
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {
+        "session_token": session_token,
+        "device_id": device_id,
+        # Returned exactly once, at registration. The client stores it in the
+        # device keystore; the server only keeps the SHA-256 hash above.
+        "device_secret": device_secret,
+        "user": {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "name": user.get("name", ""),
+            "picture": user.get("picture", ""),
+        },
+    }
+
+
+@api.post("/auth/device/token")
+async def device_token(body: DeviceLoginRequest):
+    device_id = (body.device_id or "").strip()
+    if not device_id:
+        raise HTTPException(status_code=401, detail="Invalid device credential")
+    device = await db.devices.find_one({"device_id": device_id}, {"_id": 0})
+    secret_hash = hashlib.sha256((body.device_secret or "").encode("utf-8")).hexdigest()
+    if not device or device.get("secret_hash") != secret_hash:
+        raise HTTPException(status_code=401, detail="Invalid device credential")
+
+    user_id = device["user_id"]
+    session_token = _mint_device_token(user_id)
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return {
+        "session_token": session_token,
+        "user": {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "name": user.get("name", ""),
+            "picture": user.get("picture", ""),
+        },
+    }
+
+
 @api.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     return {"user_id": user["user_id"], "email": user["email"], "name": user.get("name", ""), "picture": user.get("picture", "")}
@@ -251,12 +398,22 @@ def _extraction_prompt(transcript: str) -> str:
         '- "prices_or_fees": array of any price, fee, charge or refund amounts mentioned.\n'
         '- "dates_or_deadlines": array of any dates, deadlines or timeframes mentioned.\n'
         '- "warranties_or_disclosures": array of warranties, guarantees or disclosures stated.\n'
-        '- "cancellations_or_changes": array of cancellation, change or termination conditions.\n\n'
-        "Each array item is an object with keys: "
+        '- "cancellations_or_changes": array of cancellation, change or termination conditions.\n'
+        '- "discrepancies": array of contradictions the caller could rely on: for example a '
+        "price that is quoted and then charged differently, a fee that is only mentioned later, "
+        "or a promise that conflicts with another statement. Return an empty array when the "
+        "transcript is internally consistent. Never invent a conflict that is not explicit.\n\n"
+        "Each array item (except discrepancies) is an object with keys: "
         '"category" (short label e.g. "Refund", "Cancellation Fee", "Deadline"), '
         '"commitment" (a short plain-language statement of what was committed), '
         '"quote" (the exact verbatim supporting sentence from the transcript), '
-        '"speaker" (who said it if confidently identifiable, else empty string).\n\n'
+        '"speaker" (who said it if confidently identifiable, else empty string).\n'
+        'Each "discrepancies" item is an object with keys: '
+        '"category" (short label e.g. "Price Mismatch", "Undisclosed Fee", "Timeline Conflict"), '
+        '"commitment" (a short statement of the conflict), '
+        '"quote" (the exact verbatim supporting sentence), '
+        '"speaker" (who said it, else empty string), '
+        '"severity" (one of "low", "medium", "high").\n\n'
         "IMPORTANT: Write the \"overall_summary\", every \"category\" and every \"commitment\" "
         "in the SAME language as the conversation. Keep each \"quote\" verbatim in the "
         "original language.\n"
@@ -286,6 +443,153 @@ async def _extract(transcript: str) -> Extraction:
     raw = await chat.send_message(UserMessage(text=_extraction_prompt(transcript)))
     parsed = _parse_json_block(raw)
     return Extraction(**parsed)
+
+
+# ---------------------------------------------------------------------------
+# AI analysis for the mobile app (/api/analyze)
+#
+# Maps the same Gemini extraction used by the record flow onto the
+# ConversationAnalysis shape the Android client renders. Structured fields are
+# derived from the AI's real output (no invented values): prices come from the
+# price-or-fee list with a detected amount, commitments come from the promise/
+# deadline/warranty/cancellation lists, and discrepancies come from the
+# contradiction list when the model actually finds one.
+# ---------------------------------------------------------------------------
+def _money_from_text(text: str) -> Optional[dict]:
+    if not text:
+        return None
+    symbol_currency = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"}
+    found = None
+    for symbol, code in symbol_currency.items():
+        if symbol in text:
+            found = code
+            break
+    code_match = re.search(r"\b(AUD|CAD|CHF|CNY|EUR|GBP|INR|JPY|USD)\b", text, re.IGNORECASE)
+    currency = code_match.group(1).upper() if code_match else found
+    # Only treat a number as money when a currency symbol/code is present, so
+    # plain numerals (dates, counts, "5 business days") are not misread as prices.
+    if currency is None:
+        return None
+    m = re.search(r"(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)", text)
+    if not m:
+        return None
+    try:
+        amount = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return {"amount": amount, "currency": currency}
+
+
+def _speaker_role(speaker: str) -> str:
+    s = (speaker or "").strip().lower()
+    if "customer" in s or "caller" in s or "client" in s:
+        return "CUSTOMER"
+    return "AI_AGENT"
+
+
+def _discrepancy_type(category: str) -> str:
+    c = (category or "").lower()
+    if "fee" in c and any(k in c for k in ("undisclosed", "hidden", "surprise", "not mention", "not stated")):
+        return "fee_not_disclosed"
+    if any(k in c for k in ("price", "cost", "charge", "refund", "billing")):
+        return "price_mismatch"
+    if any(k in c for k in ("timeline", "date", "deadline", "when", "schedule")):
+        return "timeline_mismatch"
+    if any(k in c for k in ("product", "feature")):
+        return "product_mismatch"
+    return "other"
+
+
+@api.post("/analyze")
+async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
+    transcript = (body.transcript or "").strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="Transcript is empty.")
+    if len(transcript) > 500000:
+        raise HTTPException(status_code=413, detail="Transcript exceeds the 500,000 character limit.")
+
+    try:
+        extraction = await _extract(transcript)
+    except Exception as e:
+        logger.error("Analyze extraction failed: %s", str(e))
+        raise HTTPException(status_code=502, detail="AI analysis failed. Please try again later.")
+
+    import uuid
+    now = datetime.now(timezone.utc).isoformat()
+    conv_id = (body.conversationId or "").strip() or f"conv_{uuid.uuid4().hex[:16]}"
+
+    prices = []
+    for item in extraction.prices_or_fees:
+        money = _money_from_text(f"{item.commitment} {item.quote}")
+        if money:
+            prices.append({
+                "id": f"price_{uuid.uuid4().hex[:12]}",
+                "amount": money["amount"],
+                "currency": money["currency"] or "",
+                "confidence": 0.0,
+                "context": item.quote or item.commitment,
+                "sourceSegmentIds": [],
+            })
+
+    commitments = []
+    for item in (
+        extraction.promises
+        + extraction.dates_or_deadlines
+        + extraction.warranties_or_disclosures
+        + extraction.cancellations_or_changes
+    ):
+        description = item.commitment or item.quote
+        if not description.strip():
+            continue
+        commitments.append({
+            "id": f"cmt_{uuid.uuid4().hex[:12]}",
+            "conversationId": conv_id,
+            "description": description,
+            "promisedBy": _speaker_role(item.speaker),
+            "status": "pending",
+            "confidence": 0.0,
+            "sourceSegmentIds": [],
+            "createdAt": now,
+            "updatedAt": now,
+        })
+
+    severity_map = {"low": "low", "medium": "medium", "high": "high"}
+    discrepancies = []
+    for item in extraction.discrepancies:
+        description = item.commitment or item.quote
+        if not description.strip():
+            continue
+        discrepancies.append({
+            "id": f"disc_{uuid.uuid4().hex[:12]}",
+            "conversationId": conv_id,
+            "type": _discrepancy_type(item.category),
+            "description": description,
+            "promisedValue": None,
+            "actualValue": None,
+            "severity": severity_map.get((item.severity or "").strip().lower(), "medium"),
+            "confidence": 0.0,
+            "sourceSegmentIds": [],
+            "status": "detected",
+            "createdAt": now,
+        })
+
+    analysis = {
+        "id": f"analysis_{uuid.uuid4().hex[:12]}",
+        "conversationId": conv_id,
+        "products": [],
+        "prices": prices,
+        "fees": [],
+        "commitments": commitments,
+        "discrepancies": discrepancies,
+        "summary": extraction.overall_summary,
+        "keyPoints": [],
+        "language": extraction.language,
+        "modelVersion": GEMINI_MODEL,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
+    return {"analysis": analysis, "provider": "recordioai", "modelVersion": GEMINI_MODEL}
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +842,8 @@ async def _startup():
     await db.user_sessions.create_index("session_token", unique=True)
     await db.records.create_index("user_id")
     await db.records.create_index("record_id", unique=True)
+    await db.devices.create_index("device_id", unique=True)
+    await db.devices.create_index("user_id")
 
 
 @app.on_event("shutdown")
