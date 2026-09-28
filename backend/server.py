@@ -617,7 +617,7 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
                 "X-Analyze-Detail": message,
             },
         )
-LAST_ANALYZE_ERROR = None
+    LAST_ANALYZE_ERROR = None
 
     import uuid
     now = datetime.now(timezone.utc).isoformat()
