@@ -439,7 +439,11 @@ async def _extract(transcript: str) -> Extraction:
         api_key=EMERGENT_LLM_KEY,
         session_id="recordio-extract",
         system_message=EXTRACTION_SYSTEM,
-    ).with_model("gemini", GEMINI_MODEL)
+    )
+    # Use GEMINI_MODEL verbatim. The legacy with_model() remapping pins every
+    # "flash" name to gemini-1.5-flash, which the GenerateContent endpoint no
+    # longer accepts, so a dashboard-configured current model must win.
+    chat.model_name = GEMINI_MODEL
     raw = await chat.send_message(UserMessage(text=_extraction_prompt(transcript)))
     parsed = _parse_json_block(raw)
     return Extraction(**parsed)
@@ -512,13 +516,17 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         extraction = await _extract(transcript)
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
-        # The exception class (not its message, which could contain provider
-        # internals) is echoed in a response header so integration failures can
-        # be classified from the client side during bring-up.
+        # The exception class and a sanitised message (API-key-like tokens are
+        # blanked) are echoed in response headers so integration failures can be
+        # classified from the client side during bring-up.
+        message = re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:300]
         raise HTTPException(
             status_code=502,
             detail="AI analysis failed. Please try again later.",
-            headers={"X-Analyze-Error": type(e).__name__},
+            headers={
+                "X-Analyze-Error": type(e).__name__,
+                "X-Analyze-Detail": message,
+            },
         )
 
     import uuid
