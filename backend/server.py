@@ -518,7 +518,7 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         raise HTTPException(status_code=413, detail="Transcript exceeds the 500,000 character limit.")
 
     try:
-        extraction = await asyncio.wait_for(_extract(transcript), timeout=45)
+        extraction = await asyncio.wait_for(_extract(transcript), timeout=20)
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
         # The exception class and a sanitised message (API-key-like tokens are
