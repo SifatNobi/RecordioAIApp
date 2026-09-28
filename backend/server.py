@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import asyncio
 import secrets
 import hashlib
 import logging
@@ -33,6 +34,10 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 TRIAL_LIMIT = 10
+
+# Most recent /api/analyze extraction failure, captured so bring-up diagnostics
+# can be read back without exposing server env or logs. Cleared on success.
+LAST_ANALYZE_ERROR = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("recordio")
@@ -513,13 +518,15 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         raise HTTPException(status_code=413, detail="Transcript exceeds the 500,000 character limit.")
 
     try:
-        extraction = await _extract(transcript)
+        extraction = await asyncio.wait_for(_extract(transcript), timeout=45)
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
         # The exception class and a sanitised message (API-key-like tokens are
         # blanked) are echoed in the 502 body/headers so integration failures
         # can be classified during bring-up. The app never surfaces this text.
-        message = re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:300]
+        message = re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:400]
+        global LAST_ANALYZE_ERROR
+        LAST_ANALYZE_ERROR = {"type": type(e).__name__, "message": message}
         raise HTTPException(
             status_code=502,
             detail=message or "AI analysis failed. Please try again later.",
@@ -528,6 +535,7 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
                 "X-Analyze-Detail": message,
             },
         )
+    LAST_ANALYZE_ERROR = None
 
     import uuid
     now = datetime.now(timezone.utc).isoformat()
@@ -605,6 +613,12 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
     }
 
     return {"analysis": analysis, "provider": "recordioai", "modelVersion": GEMINI_MODEL}
+
+
+@api.get("/debug/analyze-last-error")
+async def analyze_last_error(user=Depends(get_current_user)):
+    """Temporary bring-up aid: returns the most recent /api/analyze failure."""
+    return {"lastAnalyzeError": LAST_ANALYZE_ERROR}
 
 
 # ---------------------------------------------------------------------------
