@@ -10,6 +10,9 @@ import {
 } from './analysis';
 import { useRecordingStore, SavedRecording } from '@/store/recordingStore';
 import { useAppStore } from '@/store/appStore';
+import { buildConversationReceipt } from '@/services/receipt/buildReceipt';
+import { autoDisputesFor } from '@/services/disputes/createDispute';
+import { generateId } from '@/utils/id';
 import {
   Conversation,
   Transcript,
@@ -18,10 +21,6 @@ import {
   ConversationAnalysis,
   SpeakerLabel,
 } from '@/types';
-
-function generateId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function normalizeSegments(result: TranscriptionResult): TranscriptSegment[] {
   const segments: TranscriptSegment[] = result.segments.map((segment) => ({
@@ -213,7 +212,18 @@ export async function runRecordPipeline(
     analysis,
   });
 
+  // Every completed conversation gets a tamper-evident receipt, so the Receipts
+  // tab, the conversation Receipt tab and the Evidence tab all have real data.
+  conversation.receipt = await buildConversationReceipt(conversation);
+
   useAppStore.getState().addConversation(conversation);
+
+  // High-severity discrepancies are escalated into disputes automatically, so
+  // the Resolve Centre reflects problems that were actually detected.
+  const autoDisputes = autoDisputesFor(conversation);
+  if (autoDisputes.length > 0) {
+    useAppStore.getState().addDisputes(autoDisputes);
+  }
 
   store.updateRecording(recordingId, {
     status: 'completed',

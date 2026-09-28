@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl, TextInput, Linking, Share } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, ScrollView, StyleSheet, TextInput, Alert, Share } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, H4, Body, Caption, Overline, Mono } from '@/components/Typography';
-import { Card, CardContent } from '@/components/Card';
+import { H1, H3, H4, Body, Caption } from '@/components/Typography';
+import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Badge } from '@/components/Badge';
+import { Badge, BadgeProps } from '@/components/Badge';
 import { Avatar } from '@/components/Avatar';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
 import { Modal } from '@/components/Modal';
 import { useAppStore } from '@/store/appStore';
+import { openExternalUrl } from '@/utils/openExternalUrl';
+import { verifyReceiptIntegrity } from '@/services/receipt/integrity';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Conversation, Transcript, TranscriptSegment, SpeakerLabel, ProcessingStatus, Commitment } from '@/types';
@@ -63,6 +65,13 @@ export default function ConversationDetailScreen() {
   ];
 
   const handleOpenWhatsApp = () => {
+    if (!hasDialableNumber(conversation.customer.phoneNumber)) {
+      Alert.alert(
+        'No phone number on file',
+        'This conversation was captured locally, so there is no phone number to address a WhatsApp follow-up to.'
+      );
+      return;
+    }
     const message = `Hi ${conversation.customer.displayName}, following up on our conversation from ${formatDate(conversation.startedAt)}. Here's a summary of what we discussed...`;
     setWhatsAppMessage(message);
     setShowWhatsAppModal(true);
@@ -84,8 +93,8 @@ export default function ConversationDetailScreen() {
     const trimmed = whatsappMessage.trim();
     if (!conversation?.customer.phoneNumber || !trimmed) return;
     const waUrl = `https://wa.me/${conversation.customer.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(trimmed)}`;
-    Linking.openURL(waUrl).catch(() => {});
     setShowWhatsAppModal(false);
+    openExternalUrl(waUrl, 'WhatsApp');
   };
 
   return (
@@ -93,13 +102,6 @@ export default function ConversationDetailScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={false}
-            colors={[Theme.colors.primaryBlue]}
-            onRefresh={() => {}}
-          />
-        }
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -628,7 +630,31 @@ function CommitmentsTab({ conversation, onToggleCommitment }: { conversation: Co
 }
 
 function ReceiptTab({ conversation }: { conversation: Conversation }) {
-  if (!conversation.receipt) {
+  const receipt = conversation.receipt;
+  const [liveStatus, setLiveStatus] = useState<'checking' | 'verified' | 'failed'>('checking');
+
+  const runVerification = useCallback(async () => {
+    if (!receipt) return;
+    setLiveStatus('checking');
+    const ok = await verifyReceiptIntegrity(receipt);
+    setLiveStatus(ok ? 'verified' : 'failed');
+  }, [receipt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!receipt) return;
+      const ok = await verifyReceiptIntegrity(receipt);
+      if (!cancelled) {
+        setLiveStatus(ok ? 'verified' : 'failed');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [receipt]);
+
+  if (!receipt) {
     return (
       <EmptyState
         title="NO RECEIPT GENERATED"
@@ -638,34 +664,32 @@ function ReceiptTab({ conversation }: { conversation: Conversation }) {
     );
   }
 
-  const receipt = conversation.receipt;
+  // The live recomputed result wins over the stored status, so a receipt that
+  // was edited after generation is reported as failed rather than trusted.
+  const displayStatus = liveStatus === 'checking' ? receipt.verificationStatus : liveStatus;
+  const isVerified = displayStatus === 'verified';
+  const statusColor = isVerified
+    ? Theme.colors.success
+    : displayStatus === 'failed'
+    ? Theme.colors.error
+    : Theme.colors.warning;
+  const statusIcon = isVerified
+    ? 'shield-checkmark'
+    : displayStatus === 'failed'
+    ? 'shield'
+    : 'shield-half';
+  const statusLabel = isVerified ? 'Verified' : displayStatus === 'failed' ? 'Tampered' : 'Unverified';
 
   return (
     <View style={styles.tabContent}>
       <Card variant="outlined" padding="md" style={styles.receiptCard}>
         <View style={styles.receiptHeader}>
           <View style={styles.receiptStatus}>
-            <Ionicons
-              name={
-                receipt.verificationStatus === 'verified'
-                  ? 'shield-checkmark'
-                  : receipt.verificationStatus === 'failed'
-                  ? 'shield'
-                  : 'shield-half'
-              }
-              size={32}
-              color={
-                receipt.verificationStatus === 'verified'
-                  ? Theme.colors.success
-                  : receipt.verificationStatus === 'failed'
-                  ? Theme.colors.error
-                  : Theme.colors.warning
-              }
-            />
+            <Ionicons name={statusIcon} size={32} color={statusColor} />
           </View>
           <View style={styles.receiptStatusInfo}>
             <H3 weight="semiBold" color="textPrimary">
-              {receipt.verificationStatus.charAt(0).toUpperCase() + receipt.verificationStatus.slice(1)}
+              {statusLabel}
             </H3>
             <Caption color="textMuted">
               Integrity Hash: {receipt.integrityHash.slice(0, 16)}...
@@ -673,9 +697,28 @@ function ReceiptTab({ conversation }: { conversation: Conversation }) {
           </View>
         </View>
 
+        {displayStatus === 'failed' && (
+          <Body color="error" style={styles.integrityWarning}>
+            This receipt no longer matches its integrity hash. Its contents have been
+            altered since it was generated and should not be treated as evidence.
+          </Body>
+        )}
+
+        <Button
+          variant="outline"
+          fullWidth
+          onPress={runVerification}
+          disabled={liveStatus === 'checking'}
+          style={styles.verifyButton}
+        >
+          <Ionicons name="refresh" size={16} style={{ marginRight: 6, color: Theme.colors.textPrimary }} />
+          {liveStatus === 'checking' ? 'Verifying...' : 'Re-verify integrity'}
+        </Button>
+
         <Separator style={styles.receiptSeparator} />
 
         <View style={styles.receiptFields}>
+          <ReceiptField label="Receipt ID" value={receipt.id} />
           <ReceiptField label="Conversation ID" value={receipt.conversationId} />
           <ReceiptField label="Agent" value={`${receipt.agentName} (${receipt.agentId})`} />
           {receipt.agentVersion && (
@@ -689,6 +732,10 @@ function ReceiptTab({ conversation }: { conversation: Conversation }) {
           <ReceiptField label="Direction" value={receipt.direction} />
           <ReceiptField label="Date" value={formatDate(receipt.createdAt)} />
           <ReceiptField label="Duration" value={formatDuration(conversation.duration)} />
+          <ReceiptField
+            label="Recording consent"
+            value={receipt.consentStatus.recordingConsented ? 'Recorded' : 'Not recorded'}
+          />
         </View>
       </Card>
 
@@ -893,8 +940,16 @@ function SourceCategory({ label, color, description }: { label: string; color: s
   );
 }
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+/**
+ * A conversation captured on-device has no dialable number; the pipeline stores
+ * a placeholder such as "Local recording" in `customer.phoneNumber`.
+ */
+function hasDialableNumber(value?: string): boolean {
+  if (!value) return false;
+  return value.replace(/[^\d]/g, '').length >= 7;
+}
+
+function formatDate(dateString: string): string {  return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -1180,7 +1235,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  receiptStatusInfo: {},
+  receiptStatusInfo: {
+    flex: 1,
+  },
+  integrityWarning: {
+    marginTop: Theme.spacing[3],
+    lineHeight: 19,
+  },
+  verifyButton: {
+    marginTop: Theme.spacing[3],
+  },
   receiptSeparator: {
     marginVertical: Theme.spacing[2],
   },
@@ -1285,8 +1349,3 @@ const styles = StyleSheet.create({
     height: 100,
   },
 });
-
-type BadgeProps = {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'processing';
-  size?: 'sm' | 'md';
-};

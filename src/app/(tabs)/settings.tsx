@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, StyleSheet, Linking, AppState } from 'react-native';
+import { View, ScrollView, StyleSheet, Linking, AppState, Alert } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { H1, H2, H3, H4, Body, Caption } from '@/components/Typography';
 import { Card } from '@/components/Card';
@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { APP_CONFIG } from '@/constants/env';
+import { openEmail, openExternalUrl } from '@/utils/openExternalUrl';
 import { getMicStatus, requestRecordingPermissions, MicPermissionState } from '@/services/permissions';
 
 export default function SettingsScreen() {
@@ -45,7 +46,12 @@ export default function SettingsScreen() {
   };
 
   const handleOpenSettings = () => {
-    Linking.openSettings().catch(() => {});
+    Linking.openSettings().catch(() => {
+      Alert.alert(
+        'Could not open system settings',
+        'Open your device Settings app manually and grant microphone access to RecordioAI.'
+      );
+    });
   };
 
   const currentPlan = plans.find((p) => p.id === currentPlanId);
@@ -289,7 +295,13 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.aboutItem}>
             <Caption color="textMuted">Support</Caption>
-            <Body color="textPrimary">{APP_CONFIG.supportEmail}</Body>
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={() => openEmail(APP_CONFIG.supportEmail, 'RecordioAI support')}
+            >
+              {APP_CONFIG.supportEmail}
+            </Button>
           </View>
         </Card>
       </View>
@@ -299,11 +311,21 @@ export default function SettingsScreen() {
           Legal
         </H2>
         <Card variant="outlined" padding="md" style={styles.settingsCard}>
-          <Button variant="ghost" fullWidth style={styles.legalButton} onPress={() => Linking.openURL(APP_CONFIG.privacyUrl).catch(() => {})}>
+          <Button
+            variant="ghost"
+            fullWidth
+            style={styles.legalButton}
+            onPress={() => openExternalUrl(APP_CONFIG.privacyUrl, 'Privacy Policy')}
+          >
             <Ionicons name="document-text" size={18} style={{ marginRight: 8 }} />
             Privacy Policy
           </Button>
-          <Button variant="ghost" fullWidth style={styles.legalButton} onPress={() => Linking.openURL(APP_CONFIG.termsUrl).catch(() => {})}>
+          <Button
+            variant="ghost"
+            fullWidth
+            style={styles.legalButton}
+            onPress={() => openExternalUrl(APP_CONFIG.termsUrl, 'Terms of Service')}
+          >
             <Ionicons name="document-text" size={18} style={{ marginRight: 8 }} />
             Terms of Service
           </Button>

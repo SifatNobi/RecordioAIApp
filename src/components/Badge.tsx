@@ -3,15 +3,15 @@ import { View, ViewProps, ViewStyle, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { Typography } from './Typography';
 
-interface BadgeProps extends ViewProps {
+export interface BadgeProps extends ViewProps {
   variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'processing';
   size?: 'sm' | 'md';
   dot?: boolean;
   children: React.ReactNode;
 }
 
-type BadgeVariant = NonNullable<BadgeProps['variant']>;
-type BadgeSize = NonNullable<BadgeProps['size']>;
+export type BadgeVariant = NonNullable<BadgeProps['variant']>;
+export type BadgeSize = NonNullable<BadgeProps['size']>;
 
 const variantStyles: Record<BadgeVariant, ViewStyle> = {
   default: { backgroundColor: Theme.colors.surfaceElevated },

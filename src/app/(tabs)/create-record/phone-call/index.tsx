@@ -83,6 +83,7 @@ export default function PhoneCallScreen() {
         tagline="Capture a call through the device microphone. Conversations are transcribed and analyzed by AI."
         recordingType="phone_call"
         autoStart
+        onStartOver={handleBack}
         autoDialOnStart={mode === 'dial'}
         dialNumber={mode === 'dial' ? numberInput : undefined}
         banner={

@@ -21,6 +21,12 @@ interface RecordingScreenProps {
   dialNumber?: string;
   autoDialOnStart?: boolean;
   autoStart?: boolean;
+  /**
+   * Invoked after "Start Over" resets recording state. Lets a host screen (for
+   * example the phone-call setup) return the user to its own configuration
+   * instead of stranding them on a blank recorder.
+   */
+  onStartOver?: () => void;
 }
 
 type ScreenPhase = 'idle' | 'recording' | 'processing' | 'error';
@@ -38,6 +44,7 @@ export function RecordingScreen({
   dialNumber,
   autoDialOnStart = false,
   autoStart = false,
+  onStartOver,
 }: RecordingScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -268,7 +275,8 @@ export function RecordingScreen({
     setActiveRecordingId(null);
     setNativeRecState(null);
     reset();
-  }, [reset]);
+    onStartOver?.();
+  }, [onStartOver, reset]);
   const isPaused = nativeRecState?.state === 'paused';
   const showControl = phase === 'idle' || phase === 'recording';
 

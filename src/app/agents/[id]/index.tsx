@@ -1,15 +1,20 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { H1, H2, H3, Body, Caption, Mono } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Badge } from '@/components/Badge';
+import { Badge, BadgeProps } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
 import { BaseModal, ModalContent } from '@/components/Modal';
 import { Input } from '@/components/Input';
 import { useAppStore } from '@/store/appStore';
+import {
+  deleteAgentSecrets,
+  isSensitiveConfigKey,
+  maskSecret,
+} from '@/services/credentials/secureCredentials';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AgentStatus, PhoneNumber } from '@/types';
@@ -62,7 +67,10 @@ export default function AgentDetailScreen() {
     paused: 'Paused',
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
+    setShowDisconnectModal(false);
+    // Remove the agent and wipe its keystore-held credentials.
+    await deleteAgentSecrets(agent.id);
     removeAgent(agent.id);
     router.back();
   };
@@ -108,13 +116,6 @@ export default function AgentDetailScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={false}
-            colors={[Theme.colors.primaryBlue]}
-            onRefresh={() => {}}
-          />
-        }
       >
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -136,6 +137,23 @@ export default function AgentDetailScreen() {
 
         {agent.description && (
           <Body color="textSecondary" style={styles.description}>{agent.description}</Body>
+        )}
+
+        {agent.status === 'connecting' && (
+          <Card variant="outlined" padding="md" style={styles.unverifiedCard}>
+            <View style={styles.unverifiedHeader}>
+              <Ionicons name="information-circle" size={18} color={Theme.colors.warning} />
+              <Body color="textPrimary" weight="semiBold" style={styles.unverifiedTitle}>
+                Connection not verified
+              </Body>
+            </View>
+            <Caption color="textSecondary" style={styles.unverifiedBody}>
+              Your configuration is saved securely on this device, but this build does
+              not yet call {agent.providerId} to confirm the credentials work. The agent
+              will stay in &quot;Connecting&quot; until live provider verification is
+              implemented.
+            </Caption>
+          </Card>
         )}
 
         <Separator style={styles.sectionSeparator} />
@@ -253,10 +271,16 @@ export default function AgentDetailScreen() {
             {Object.entries(agent.configuration).map(([key, value]) => (
               <View key={key} style={styles.configRow}>
                 <Caption color="textMuted">{formatKey(key)}</Caption>
-                <Body color="textSecondary">{String(value)}</Body>
+                <Body color="textSecondary">
+                  {isSensitiveConfigKey(key) ? maskSecret(value) : String(value)}
+                </Body>
               </View>
             ))}
           </Card>
+          <Caption color="textMuted" style={styles.credentialsNote}>
+            Credentials are held in this device&apos;s secure keystore and are never
+            written to app storage.
+          </Caption>
         </View>
 
         <View style={styles.bottomSpacer} />
@@ -365,8 +389,27 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing[2],
   },
   description: {
+    marginBottom: Theme.spacing[3],
+    lineHeight: 20,
+  },
+  unverifiedCard: {
     marginBottom: Theme.spacing[4],
-    lineHeight: 22,
+    gap: Theme.spacing[2],
+  },
+  unverifiedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing[2],
+  },
+  unverifiedTitle: {
+    flex: 1,
+  },
+  unverifiedBody: {
+    lineHeight: 18,
+  },
+  credentialsNote: {
+    marginTop: Theme.spacing[3],
+    lineHeight: 17,
   },
   sectionSeparator: {
     marginVertical: Theme.spacing[4],
@@ -451,8 +494,3 @@ const styles = StyleSheet.create({
     height: 100,
   },
 });
-
-type BadgeProps = {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'processing';
-  size?: 'sm' | 'md';
-};

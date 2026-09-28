@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, H4, Body, Caption, Overline } from '@/components/Typography';
+import { H1, H3, Body, Caption } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Badge } from '@/components/Badge';
-import { Avatar } from '@/components/Avatar';
+import { Badge, BadgeProps } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
 import { useAppStore } from '@/store/appStore';
@@ -15,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AIAgent, AgentStatus } from '@/types';
 
 export default function AgentsScreen() {
-  const { agents, removeAgent, setActiveAgent } = useAppStore();
+  const { agents, removeAgent } = useAppStore();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -54,13 +53,6 @@ export default function AgentsScreen() {
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
-      refreshControl={
-        <RefreshControl
-          refreshing={false}
-          colors={[Theme.colors.primaryBlue]}
-          onRefresh={() => {}}
-        />
-      }
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">AI Agents</H1>
@@ -256,8 +248,3 @@ const styles = StyleSheet.create({
     height: 100,
   },
 });
-
-type BadgeProps = {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'processing';
-  size?: 'sm' | 'md';
-};

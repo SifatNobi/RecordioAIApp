@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 /**
  * Backend API root.
  *
@@ -26,7 +28,9 @@ export const IS_DEV = ENVIRONMENT === 'development';
 
 export const APP_CONFIG = {
   name: 'RecordioAI',
-  version: '1.0.0',
+  // Read from app.json so the About screen can never drift from the shipped
+  // build. Falls back to the last known release if the manifest is unavailable.
+  version: (Constants.expoConfig?.version as string | undefined) ?? '1.1.2',
   bundleId: 'com.recordioai.app',
   supportEmail: 'support@recordioai.com',
   privacyUrl: 'https://recordioai.com/privacy',

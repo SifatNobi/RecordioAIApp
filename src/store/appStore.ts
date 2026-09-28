@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { OnboardingState, AppSettings, AIAgent, Conversation, Customer } from '@/types';
+import { OnboardingState, AppSettings, AIAgent, Conversation, Customer, DisputeDetails } from '@/types';
 
 interface AppState {
   onboarding: OnboardingState;
@@ -10,6 +10,7 @@ interface AppState {
   agents: AIAgent[];
   conversations: Conversation[];
   customers: Customer[];
+  disputes: DisputeDetails[];
   activeAgentId: string | null;
   activeConversationId: string | null;
   isLoading: boolean;
@@ -32,6 +33,10 @@ interface AppActions {
   setActiveConversation: (id: string | null) => void;
   addCustomer: (customer: Customer) => void;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
+  addDispute: (dispute: DisputeDetails) => void;
+  addDisputes: (disputes: DisputeDetails[]) => void;
+  updateDispute: (id: string, updates: Partial<DisputeDetails>) => void;
+  removeDispute: (id: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   initializeStores: () => void;
@@ -60,6 +65,7 @@ export const useAppStore = create<AppState & AppActions>()(
       agents: [],
       conversations: [],
       customers: [],
+      disputes: [],
       activeAgentId: null,
       activeConversationId: null,
       isLoading: false,
@@ -128,7 +134,25 @@ export const useAppStore = create<AppState & AppActions>()(
           ),
         })),
 
+      addDispute: (dispute) => set((state) => ({ disputes: [dispute, ...state.disputes] })),
+
+      addDisputes: (disputes) =>
+        set((state) => ({ disputes: [...disputes, ...state.disputes] })),
+
+      updateDispute: (id, updates) =>
+        set((state) => ({
+          disputes: state.disputes.map((dispute) =>
+            dispute.id === id
+              ? { ...dispute, ...updates, updatedAt: new Date().toISOString() }
+              : dispute
+          ),
+        })),
+
+      removeDispute: (id) =>
+        set((state) => ({ disputes: state.disputes.filter((dispute) => dispute.id !== id) })),
+
       setLoading: (loading) => set({ isLoading: loading }),
+
       setError: (error) => set({ error }),
       initializeStores: () => {
         // Initialization logic can go here if needed
@@ -145,6 +169,7 @@ export const useAppStore = create<AppState & AppActions>()(
         agents: state.agents,
         conversations: state.conversations,
         customers: state.customers,
+        disputes: state.disputes,
       }),
       onRehydrateStorage: () => (state) => {
         useAppStore.setState({ hasHydrated: true });

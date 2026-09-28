@@ -7,6 +7,7 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Badge } from '@/components/Badge';
 import { useAppStore } from '@/store/appStore';
+import { saveAgentSecrets, splitConfig, isSensitiveConfigKey, maskSecret } from '@/services/credentials/secureCredentials';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AIProvider } from '@/types';
@@ -67,12 +68,13 @@ const PROVIDERS: AIProvider[] = [
 ];
 
 export default function ConnectAgentScreen() {
-  const { addAgent } = useAppStore();
+  const { addAgent, setActiveAgent } = useAppStore();
   const router = useRouter();
   const [selectedProvider, setSelectedProvider] = useState<AIProvider | null>(null);
   const [step, setStep] = useState<'select' | 'configure' | 'review'>('select');
   const [config, setConfig] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const handleProviderSelect = (provider: AIProvider) => {
     setSelectedProvider(provider);
@@ -115,24 +117,52 @@ export default function ConnectAgentScreen() {
     }
   };
 
-  const handleConnect = () => {
-    if (!selectedProvider) return;
+  const handleConnect = async () => {
+    if (!selectedProvider || submitting) return;
+
+    const agentId = `agent_${Date.now()}`;
+
+    // Provider API keys and webhook secrets go to the platform keystore. Only
+    // non-sensitive configuration is written to the persisted agent store.
+    const { publicConfig, secrets } = splitConfig(config);
+
+    setSubmitting(true);
+    try {
+      await saveAgentSecrets(agentId, secrets);
+    } catch {
+      // Fail loudly rather than silently persisting credentials in the clear.
+      setSubmitting(false);
+      setErrors({
+        submit:
+          'Could not secure your credentials on this device. Nothing was saved. Please try again.',
+      });
+      return;
+    }
 
     const newAgent = {
-      id: `agent_${Date.now()}`,
+      id: agentId,
       providerId: selectedProvider.id,
       name: config.name || selectedProvider.name,
       description: config.description,
       status: 'connecting' as const,
-      configuration: config,
+      configuration: publicConfig,
       phoneNumbers: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     addAgent(newAgent);
+    // The agent just configured becomes the active agent, so subsequent
+    // conversations and their receipts are attributed to it.
+    setActiveAgent(newAgent.id);
     router.replace(`/agents/${newAgent.id}`);
   };
+
+  const formatKey = (key: string): string =>
+    key
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/^./, (char) => char.toUpperCase());
 
   if (step === 'select') {
     return (
@@ -262,21 +292,38 @@ export default function ConnectAgentScreen() {
           </View>
           {Object.entries(config).map(([key, value]) => (
             <View key={key} style={styles.reviewItem}>
-              <Caption color="textMuted">{key}</Caption>
+              <Caption color="textMuted">{formatKey(key)}</Caption>
               <Body color="textPrimary" style={styles.reviewValue}>
-                {value}
+                {isSensitiveConfigKey(key) ? maskSecret(value) : value}
               </Body>
             </View>
           ))}
         </Card>
 
+        <Body color="textMuted" style={styles.securityNote}>
+          Credentials are encrypted and stored in this device&apos;s secure keystore. They
+          are never written to app storage or sent anywhere except the provider you selected.
+        </Body>
+
+        {errors.submit && (
+          <Body color="error" style={styles.submitError}>
+            {errors.submit}
+          </Body>
+        )}
+
         <View style={styles.actions}>
           <Button variant="outline" fullWidth onPress={handleBack} style={styles.backAction}>
             Back
           </Button>
-          <Button variant="primary" fullWidth onPress={handleConnect} style={styles.nextAction}>
-            Connect Agent
-            <Ionicons name="link" size={20} style={{ marginLeft: 8 }} />
+          <Button
+            variant="primary"
+            fullWidth
+            onPress={handleConnect}
+            disabled={submitting}
+            style={styles.nextAction}
+          >
+            {submitting ? 'Securing credentials...' : 'Save Agent Configuration'}
+            {!submitting && <Ionicons name="link" size={20} style={{ marginLeft: 8 }} />}
           </Button>
         </View>
       </ScrollView>
@@ -366,6 +413,13 @@ const styles = StyleSheet.create({
   },
   reviewValue: {
     fontFamily: Theme.typography.fontFamily.mono,
+  },
+  securityNote: {
+    marginTop: Theme.spacing[3],
+    lineHeight: 18,
+  },
+  submitError: {
+    marginTop: Theme.spacing[3],
   },
   actions: {
     flexDirection: 'row',

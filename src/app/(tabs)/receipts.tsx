@@ -1,9 +1,8 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { Theme } from '@/constants/theme';
-import { H1, H2, H3, H4, Body, Caption, Overline } from '@/components/Typography';
+import { H1, H3, Body, Caption } from '@/components/Typography';
 import { Card } from '@/components/Card';
-import { Button } from '@/components/Button';
 import { Badge } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
@@ -28,13 +27,6 @@ export default function ReceiptsScreen() {
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
-      refreshControl={
-        <RefreshControl
-          refreshing={false}
-          colors={[Theme.colors.primaryBlue]}
-          onRefresh={() => {}}
-        />
-      }
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">Conversation Receipts</H1>

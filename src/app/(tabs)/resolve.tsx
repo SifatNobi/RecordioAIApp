@@ -1,61 +1,97 @@
-import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, ScrollView, StyleSheet, Pressable, ScrollView as SV } from 'react-native';
 import { Theme } from '@/constants/theme';
 import { H1, H2, H3, Body, Caption } from '@/components/Typography';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Badge } from '@/components/Badge';
+import { Badge, BadgeVariant } from '@/components/Badge';
 import { Separator } from '@/components/Separator';
 import { EmptyState } from '@/components/EmptyState';
 import { BaseModal, ModalContent } from '@/components/Modal';
+import { Input } from '@/components/Input';
 import { useAppStore } from '@/store/appStore';
+import { createManualDispute } from '@/services/disputes/createDispute';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DisputeStatus, DisputeDetails } from '@/types';
 
+const STATUS_VARIANTS: Record<DisputeStatus, BadgeVariant> = {
+  open: 'info',
+  investigating: 'processing',
+  waiting_customer: 'warning',
+  waiting_business: 'warning',
+  resolved: 'success',
+  closed: 'default',
+};
+
+const STATUS_LABELS: Record<DisputeStatus, string> = {
+  open: 'Open',
+  investigating: 'Investigating',
+  waiting_customer: 'Waiting for Customer',
+  waiting_business: 'Waiting for Business',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+const PRIORITY_VARIANTS: Record<DisputeDetails['priority'], BadgeVariant> = {
+  low: 'default',
+  medium: 'info',
+  high: 'warning',
+  critical: 'error',
+};
+
+const PRIORITIES: DisputeDetails['priority'][] = ['low', 'medium', 'high', 'critical'];
+
+/** Status transitions a dispute can be advanced through from the detail sheet. */
+const NEXT_STATUS: Partial<Record<DisputeStatus, DisputeStatus>> = {
+  open: 'investigating',
+  investigating: 'resolved',
+  waiting_customer: 'investigating',
+  waiting_business: 'investigating',
+  resolved: 'closed',
+};
+
 export default function ResolveScreen() {
-  const { conversations } = useAppStore();
+  const { disputes, conversations, addDispute, updateDispute } = useAppStore();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [showCreateDispute, setShowCreateDispute] = useState(false);
 
-  // Disputes will come from the backend API in a real integration.
-  const disputes: DisputeDetails[] = [];
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const handleCreateDispute = () => {
-    setShowCreateDispute(true);
+  const stats = useMemo(
+    () => ({
+      open: disputes.filter((d) => d.status === 'open').length,
+      investigating: disputes.filter((d) => d.status === 'investigating').length,
+      resolved: disputes.filter(
+        (d) => d.status === 'resolved' || d.status === 'closed'
+      ).length,
+    }),
+    [disputes]
+  );
+
+  const selected = disputes.find((d) => d.id === selectedId) ?? null;
+
+  const handleAdvance = (dispute: DisputeDetails) => {
+    const next = NEXT_STATUS[dispute.status];
+    if (!next) return;
+
+    const patch: Partial<DisputeDetails> = { status: next };
+    if (next === 'resolved') {
+      patch.resolvedAt = new Date().toISOString();
+    }
+    updateDispute(dispute.id, patch);
   };
 
-  const statusVariants: Record<DisputeStatus, BadgeProps['variant']> = {
-    open: 'info',
-    investigating: 'processing',
-    waiting_customer: 'warning',
-    waiting_business: 'warning',
-    resolved: 'success',
-    closed: 'default',
-  };
-
-  const statusLabels: Record<DisputeStatus, string> = {
-    open: 'Open',
-    investigating: 'Investigating',
-    waiting_customer: 'Waiting for Customer',
-    waiting_business: 'Waiting for Business',
-    resolved: 'Resolved',
-    closed: 'Closed',
+  const handleReopen = (dispute: DisputeDetails) => {
+    updateDispute(dispute.id, { status: 'open', resolvedAt: undefined });
   };
 
   return (
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[styles.content, { paddingTop: Theme.spacing[4] + insets.top }]}
-      refreshControl={
-        <RefreshControl
-          refreshing={false}
-          colors={[Theme.colors.primaryBlue]}
-          onRefresh={() => {}}
-        />
-      }
     >
       <View style={styles.header}>
         <H1 weight="bold" color="textPrimary">Resolve Centre</H1>
@@ -68,17 +104,17 @@ export default function ResolveScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Caption color="textMuted">Open</Caption>
-            <H2 weight="bold" color="textPrimary">0</H2>
+            <H2 weight="bold" color="textPrimary">{stats.open}</H2>
           </View>
           <Separator orientation="vertical" variant="subtle" style={styles.statSeparator} />
           <View style={styles.statItem}>
             <Caption color="textMuted">Investigating</Caption>
-            <H2 weight="bold" color="textPrimary">0</H2>
+            <H2 weight="bold" color="textPrimary">{stats.investigating}</H2>
           </View>
           <Separator orientation="vertical" variant="subtle" style={styles.statSeparator} />
           <View style={styles.statItem}>
             <Caption color="textMuted">Resolved</Caption>
-            <H2 weight="bold" color="textPrimary">0</H2>
+            <H2 weight="bold" color="textPrimary">{stats.resolved}</H2>
           </View>
         </View>
       </Card>
@@ -86,22 +122,43 @@ export default function ResolveScreen() {
       {disputes.length === 0 ? (
         <EmptyState
           title="NO DISPUTES"
-          description="Disputes will appear here when you flag discrepancies or customers raise issues with conversations."
-          action={{ label: 'Create Dispute', onPress: handleCreateDispute }}
+          description={
+            conversations.length === 0
+              ? 'Disputes appear here when a conversation analysis detects a high-severity discrepancy, or when you raise one yourself.'
+              : 'No discrepancies have been flagged in your conversations. You can still raise a dispute manually against a conversation.'
+          }
+          action={{
+            label: conversations.length > 0 ? 'Raise Dispute' : 'View Conversations',
+            onPress: () =>
+              conversations.length > 0
+                ? setShowCreate(true)
+                : router.push('/conversations'),
+          }}
           style={styles.emptyState}
         />
       ) : (
         <View style={styles.disputesList}>
           {disputes.map((dispute) => (
-            <Card key={dispute.id} variant="outlined" padding="md" style={styles.disputeCard}>
+            <Card
+              key={dispute.id}
+              variant="outlined"
+              padding="md"
+              style={styles.disputeCard}
+              onPress={() => setSelectedId(dispute.id)}
+            >
               <View style={styles.disputeHeader}>
                 <View style={styles.disputeTitle}>
                   <H3 weight="semiBold" color="textPrimary">{dispute.title}</H3>
                   <Caption color="textMuted">{dispute.id}</Caption>
                 </View>
-                <Badge variant={statusVariants[dispute.status]} size="sm">
-                  {statusLabels[dispute.status]}
-                </Badge>
+                <View style={styles.disputeBadges}>
+                  <Badge variant={PRIORITY_VARIANTS[dispute.priority]} size="sm">
+                    {dispute.priority}
+                  </Badge>
+                  <Badge variant={STATUS_VARIANTS[dispute.status]} size="sm">
+                    {STATUS_LABELS[dispute.status]}
+                  </Badge>
+                </View>
               </View>
               <Body color="textSecondary" style={styles.disputeDesc}>
                 {dispute.description}
@@ -110,7 +167,7 @@ export default function ResolveScreen() {
                 <Caption color="textMuted">
                   {dispute.conversations.length} conversation{dispute.conversations.length !== 1 ? 's' : ''}
                 </Caption>
-                <Caption color="textMuted" style={{ marginLeft: Theme.spacing[3] }}>
+                <Caption color="textMuted" style={styles.disputeMetaSpacing}>
                   {formatRelativeTime(dispute.createdAt)}
                 </Caption>
               </View>
@@ -121,20 +178,242 @@ export default function ResolveScreen() {
 
       <View style={styles.bottomSpacer} />
 
-      <BaseModal visible={showCreateDispute} onClose={() => setShowCreateDispute(false)}>
-        <ModalContent title="Create Dispute" onClose={() => setShowCreateDispute(false)}>
-          <Body color="textSecondary" style={styles.modalBody}>
-            Dispute creation is not available yet in this build. In the full
-            release you can flag discrepancies from any conversation as the
-            starting point of a dispute, and attached verified receipts as
-            evidence.
-          </Body>
-          <Button variant="primary" fullWidth onPress={() => setShowCreateDispute(false)}>
-            Got it
-          </Button>
-        </ModalContent>
+      <CreateDisputeModal
+        visible={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={addDispute}
+      />
+
+      <BaseModal visible={selected !== null} onClose={() => setSelectedId(null)}>
+        {selected && (
+          <ModalContent title={selected.title} onClose={() => setSelectedId(null)}>
+            <View style={styles.detailBadges}>
+              <Badge variant={PRIORITY_VARIANTS[selected.priority]} size="sm">
+                {selected.priority}
+              </Badge>
+              <Badge variant={STATUS_VARIANTS[selected.status]} size="sm">
+                {STATUS_LABELS[selected.status]}
+              </Badge>
+            </View>
+
+            <Body color="textSecondary" style={styles.modalBody}>
+              {selected.description}
+            </Body>
+
+            <Separator style={styles.modalSeparator} />
+
+            <Caption color="textMuted">Linked conversations</Caption>
+            <View style={styles.linkList}>
+              {selected.conversations.length === 0 ? (
+                <Caption color="textMuted">None linked.</Caption>
+              ) : (
+                selected.conversations.map((conversationId) => {
+                  const conversation = conversations.find((c) => c.id === conversationId);
+                  return (
+                    <Button
+                      key={conversationId}
+                      variant="outline"
+                      fullWidth
+                      style={styles.linkButton}
+                      onPress={() => {
+                        setSelectedId(null);
+                        router.push(`/conversations/${conversationId}`);
+                      }}
+                    >
+                      <Ionicons
+                        name="document-text"
+                        size={16}
+                        style={{ marginRight: 6, color: Theme.colors.textPrimary }}
+                      />
+                      {conversation?.customer.displayName ?? conversationId}
+                    </Button>
+                  );
+                })
+              )}
+            </View>
+
+            {selected.evidence.length > 0 && (
+              <>
+                <Separator style={styles.modalSeparator} />
+                <Caption color="textMuted">
+                  Evidence attached: {selected.evidence.length} verified receipt
+                  {selected.evidence.length !== 1 ? 's' : ''}
+                </Caption>
+              </>
+            )}
+
+            <View style={styles.modalActions}>
+              {(selected.status === 'resolved' || selected.status === 'closed') && (
+                <Button variant="outline" fullWidth onPress={() => handleReopen(selected)}>
+                  Reopen
+                </Button>
+              )}
+              {NEXT_STATUS[selected.status] && (
+                <Button
+                  variant="primary"
+                  fullWidth
+                  onPress={() => handleAdvance(selected)}
+                >
+                  Move to {STATUS_LABELS[NEXT_STATUS[selected.status]!]}
+                </Button>
+              )}
+            </View>
+          </ModalContent>
+        )}
       </BaseModal>
     </ScrollView>
+  );
+}
+
+function CreateDisputeModal({
+  visible,
+  onClose,
+  onCreate,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCreate: (dispute: DisputeDetails) => void;
+}) {
+  const conversations = useAppStore((state) => state.conversations);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<DisputeDetails['priority']>('medium');
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setConversationId(null);
+    setTitle('');
+    setDescription('');
+    setPriority('medium');
+    setError(null);
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleSubmit = () => {
+    if (!conversationId) {
+      setError('Select the conversation this dispute relates to.');
+      return;
+    }
+    if (title.trim().length < 3) {
+      setError('Give the dispute a short title (at least 3 characters).');
+      return;
+    }
+
+    const conversation = conversations.find((c) => c.id === conversationId);
+    onCreate(
+      createManualDispute({
+        conversationId,
+        title,
+        description,
+        priority,
+        evidence: conversation?.receipt ? [conversation.receipt.id] : [],
+      })
+    );
+    handleClose();
+  };
+
+  return (
+    <BaseModal visible={visible} onClose={handleClose}>
+      <ModalContent title="Raise Dispute" onClose={handleClose}>
+        {conversations.length === 0 ? (
+          <Body color="textSecondary" style={styles.modalBody}>
+            There are no processed conversations to dispute yet. Record or paste a
+            conversation first.
+          </Body>
+        ) : (
+          <>
+            <Caption color="textSecondary" style={styles.fieldLabel}>
+              Conversation
+            </Caption>
+            <SV style={styles.conversationPicker} nestedScrollEnabled>
+              {conversations.map((conversation) => {
+                const active = conversation.id === conversationId;
+                return (
+                  <Pressable
+                    key={conversation.id}
+                    onPress={() => {
+                      setConversationId(conversation.id);
+                      setError(null);
+                    }}
+                    style={[styles.conversationOption, active && styles.conversationOptionActive]}
+                  >
+                    <Ionicons
+                      name={active ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={active ? Theme.colors.primaryBlue : Theme.colors.textMuted}
+                    />
+                    <Body
+                      color="textPrimary"
+                      style={styles.conversationOptionText}
+                      numberOfLines={1}
+                    >
+                      {conversation.customer.displayName}
+                    </Body>
+                  </Pressable>
+                );
+              })}
+            </SV>
+
+            <Input
+              label="Title"
+              value={title}
+              onChangeText={(value) => {
+                setTitle(value);
+                setError(null);
+              }}
+              placeholder="e.g. Refund was not processed"
+              containerStyle={styles.field}
+              autoCapitalize="sentences"
+            />
+
+            <Input
+              label="Description"
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What went wrong?"
+              containerStyle={styles.field}
+              multiline
+              numberOfLines={4}
+              style={styles.textarea}
+              autoCapitalize="sentences"
+            />
+
+            <Caption color="textSecondary" style={styles.fieldLabel}>
+              Priority
+            </Caption>
+            <View style={styles.priorityRow}>
+              {PRIORITIES.map((option) => (
+                <Button
+                  key={option}
+                  variant={priority === option ? 'primary' : 'outline'}
+                  size="sm"
+                  style={styles.priorityButton}
+                  onPress={() => setPriority(option)}
+                >
+                  {option}
+                </Button>
+              ))}
+            </View>
+
+            {error && <Caption color="error" style={styles.errorText}>{error}</Caption>}
+
+            <View style={styles.modalActions}>
+              <Button variant="ghost" fullWidth onPress={handleClose}>
+                Cancel
+              </Button>
+              <Button variant="primary" fullWidth onPress={handleSubmit}>
+                Raise Dispute
+              </Button>
+            </View>
+          </>
+        )}
+      </ModalContent>
+    </BaseModal>
   );
 }
 
@@ -193,11 +472,18 @@ const styles = StyleSheet.create({
   disputeCard: {},
   disputeHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: Theme.spacing[2],
+    gap: Theme.spacing[2],
   },
-  disputeTitle: {},
+  disputeTitle: {
+    flex: 1,
+  },
+  disputeBadges: {
+    alignItems: 'flex-end',
+    gap: Theme.spacing[1],
+  },
   disputeDesc: {
     marginBottom: Theme.spacing[2],
   },
@@ -205,15 +491,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  disputeMetaSpacing: {
+    marginLeft: Theme.spacing[3],
+  },
+  detailBadges: {
+    flexDirection: 'row',
+    gap: Theme.spacing[2],
+    marginBottom: Theme.spacing[3],
+  },
   modalBody: {
     marginBottom: Theme.spacing[4],
+  },
+  modalSeparator: {
+    marginVertical: Theme.spacing[3],
+  },
+  linkList: {
+    gap: Theme.spacing[2],
+    marginTop: Theme.spacing[2],
+  },
+  linkButton: {
+    justifyContent: 'flex-start',
+  },
+  fieldLabel: {
+    marginBottom: Theme.spacing[2],
+  },
+  conversationPicker: {
+    maxHeight: 180,
+    marginBottom: Theme.spacing[4],
+  },
+  conversationOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing[2],
+    paddingVertical: Theme.spacing[3],
+    paddingHorizontal: Theme.spacing[3],
+    borderRadius: Theme.borderRadius.base,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    marginBottom: Theme.spacing[2],
+  },
+  conversationOptionActive: {
+    borderColor: Theme.colors.primaryBlue,
+    backgroundColor: 'rgba(0, 102, 255, 0.08)',
+  },
+  conversationOptionText: {
+    flex: 1,
+  },
+  field: {
+    marginBottom: Theme.spacing[4],
+  },
+  textarea: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    gap: Theme.spacing[2],
+    marginBottom: Theme.spacing[3],
+  },
+  priorityButton: {
+    flex: 1,
+  },
+  errorText: {
+    marginBottom: Theme.spacing[3],
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Theme.spacing[3],
+    marginTop: Theme.spacing[2],
   },
   bottomSpacer: {
     height: 100,
   },
 });
-
-type BadgeProps = {
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'processing';
-  size?: 'sm' | 'md';
-};

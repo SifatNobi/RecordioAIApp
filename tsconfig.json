@@ -13,6 +13,7 @@
     "jsx": "react-jsx",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["jest", "node", "react"],
     "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*", "App.tsx", "app/**/*", "*.config.*"],
