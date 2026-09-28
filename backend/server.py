@@ -440,17 +440,32 @@ def _parse_json_block(text: str) -> dict:
 
 
 async def _extract(transcript: str) -> Extraction:
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id="recordio-extract",
-        system_message=EXTRACTION_SYSTEM,
-    )
-    # Use GEMINI_MODEL verbatim. The legacy with_model() remapping pins every
-    # "flash" name to gemini-1.5-flash, which the GenerateContent endpoint no
-    # longer accepts, so a dashboard-configured current model must win.
-    chat.model_name = GEMINI_MODEL
-    raw = await chat.send_message(UserMessage(text=_extraction_prompt(transcript)))
-    parsed = _parse_json_block(raw)
+    # Call Gemini through its REST /generateContent endpoint directly rather
+    # than google-generativeai: the SDK makes a blocking connection call with no
+    # timeout that hangs inside Render's network and wedges the request until
+    # the reverse proxy gives up (headerless 502). httpx gives us explicit
+    # timeouts and a readable HTTP status when the key/model is wrong.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": _extraction_prompt(transcript)}]}],
+        "systemInstruction": {"parts": [{"text": EXTRACTION_SYSTEM}]},
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8192, "topP": 0.95},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=8.0)) as client:
+            resp = await client.post(url, params={"key": EMERGENT_LLM_KEY}, json=payload)
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Gemini transport error: {e}") from e
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError):
+        raise RuntimeError(f"Gemini response missing text: {data}") from None
+
+    parsed = _parse_json_block(text)
     return Extraction(**parsed)
 
 
