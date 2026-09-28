@@ -517,12 +517,12 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
         # The exception class and a sanitised message (API-key-like tokens are
-        # blanked) are echoed in response headers so integration failures can be
-        # classified from the client side during bring-up.
+        # blanked) are echoed in the 502 body/headers so integration failures
+        # can be classified during bring-up. The app never surfaces this text.
         message = re.sub(r"[A-Za-z0-9_\-]{20,}", "***", str(e))[:300]
         raise HTTPException(
             status_code=502,
-            detail="AI analysis failed. Please try again later.",
+            detail=message or "AI analysis failed. Please try again later.",
             headers={
                 "X-Analyze-Error": type(e).__name__,
                 "X-Analyze-Detail": message,
