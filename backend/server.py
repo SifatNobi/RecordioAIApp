@@ -31,6 +31,7 @@ db = client[os.environ["DB_NAME"]]
 
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "").strip()
 
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 TRIAL_LIMIT = 10
@@ -352,6 +353,11 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
     if len(audio_bytes) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Audio exceeds 25 MB limit")
 
+    if not WHISPER_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Transcription is not configured on the server yet. Please try again later.",
+        )
     audio_sha256 = hashlib.sha256(audio_bytes).hexdigest()
 
     tmp_path = None
@@ -359,7 +365,7 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
-        stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+        stt = OpenAISpeechToText(api_key=WHISPER_API_KEY)
         with open(tmp_path, "rb") as audio_file:
             result = await stt.transcribe(audio_file, model="whisper-1", response_format="text")
         transcript = result if isinstance(result, str) else getattr(result, "text", str(result))
