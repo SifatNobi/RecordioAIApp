@@ -31,6 +31,14 @@ db = client[os.environ["DB_NAME"]]
 
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+# If the configured model is rejected by the provider (project/model access
+# restrictions), fall back to broadly available Gemini checkpoints so analysis
+# still works without an operator action.
+GEMINI_FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
 WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "").strip()
 
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
@@ -445,34 +453,69 @@ def _parse_json_block(text: str) -> dict:
     return json.loads(text[start : end + 1])
 
 
-async def _extract(transcript: str) -> Extraction:
-    # Call Gemini through its REST /generateContent endpoint directly rather
-    # than google-generativeai: the SDK makes a blocking connection call with no
-    # timeout that hangs inside Render's network and wedges the request until
-    # the reverse proxy gives up (headerless 502). httpx gives us explicit
-    # timeouts and a readable HTTP status when the key/model is wrong.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+class _GeminiModelRejected(RuntimeError):
+    """The provider refused this model (HTTP error with a readable status)."""
+
+    def __init__(self, model: str, status: int, detail: str):
+        self.model = model
+        self.status = status
+        self.detail = detail
+        super().__init__(f"Gemini HTTP {status} ({model}): {detail}")
+
+
+async def _call_gemini(model: str, prompt: str) -> dict:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": _extraction_prompt(transcript)}]}],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "systemInstruction": {"parts": [{"text": EXTRACTION_SYSTEM}]},
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8192, "topP": 0.95},
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=8.0)) as client:
-            resp = await client.post(url, params={"key": EMERGENT_LLM_KEY}, json=payload)
+            resp: httpx.Response = await client.post(
+                url, params={"key": EMERGENT_LLM_KEY}, json=payload
+            )
     except httpx.HTTPError as e:
-        raise RuntimeError(f"Gemini transport error: {e}") from e
+        # Transport failures are not model-availability problems; fail fast.
+        raise RuntimeError(f"Gemini transport error ({model}): {e}") from e
     if resp.status_code != 200:
-        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:200]}")
+        raise _GeminiModelRejected(model, resp.status_code, resp.text[:400])
+    return resp.json()
 
-    data = resp.json()
+
+async def _extract(transcript: str) -> "tuple[Extraction, str]":
+    # Call Gemini through its REST /generateContent endpoint directly rather
+    # than google-generativeai: the SDK makes a blocking connection call with no
+    # timeout that hangs inside Render's network and wedges the request until
+    # the reverse proxy gives up (headerless 502). httpx gives us explicit
+    # timeouts and a readable HTTP status when the key/model is wrong. If the
+    # configured model is rejected (access denial, deletion, region), try the
+    # fallback checkpoints before surfacing the failure.
+    prompt = _extraction_prompt(transcript)
+    candidates = [GEMINI_MODEL] + [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL]
+    used_model = None
+    data = None
+    last_rejection = None
+    for model in candidates:
+        try:
+            data = await _call_gemini(model, prompt)
+            used_model = model
+            break
+        except _GeminiModelRejected as e:
+            last_rejection = e
+            logger.warning("Gemini model %s rejected (HTTP %s), trying fallback", model, e.status)
+            continue
+    if data is None:
+        assert last_rejection is not None
+        raise last_rejection
+
     try:
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError, TypeError):
         raise RuntimeError(f"Gemini response missing text: {data}") from None
 
     parsed = _parse_json_block(text)
-    return Extraction(**parsed)
+    return Extraction(**parsed), used_model
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +582,7 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         raise HTTPException(status_code=413, detail="Transcript exceeds the 500,000 character limit.")
 
     try:
-        extraction = await asyncio.wait_for(_extract(transcript), timeout=20)
+        extraction, used_model = await asyncio.wait_for(_extract(transcript), timeout=20)
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
         # The exception class and a sanitised message (API-key-like tokens are
@@ -628,12 +671,12 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         "summary": extraction.overall_summary,
         "keyPoints": [],
         "language": extraction.language,
-        "modelVersion": GEMINI_MODEL,
+        "modelVersion": used_model,
         "createdAt": now,
         "updatedAt": now,
     }
 
-    return {"analysis": analysis, "provider": "recordioai", "modelVersion": GEMINI_MODEL}
+    return {"analysis": analysis, "provider": "recordioai", "modelVersion": used_model}
 
 
 @api.get("/debug/analyze-last-error")
@@ -672,7 +715,7 @@ async def create_record(body: RecordCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=422, detail="Agent name is required.")
 
     try:
-        extraction = await _extract(transcript)
+        extraction, _ = await _extract(transcript)
     except Exception as e:
         logger.error("Extraction failed: %s", str(e))
         raise HTTPException(status_code=502, detail="AI extraction failed or returned invalid data. Please try again.")
