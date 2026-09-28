@@ -35,9 +35,10 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 # restrictions), fall back to broadly available Gemini checkpoints so analysis
 # still works without an operator action.
 GEMINI_FALLBACK_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-lite-latest",
 ]
 WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "").strip()
 
@@ -693,18 +694,42 @@ async def analyze_last_error(user=Depends(get_current_user)):
 
 
 @api.get("/debug/gemini-models")
-async def debug_gemini_models(user=Depends(get_current_user)):
-    """Temporary bring-up aid: lists model names this project's key can access."""
+async def debug_gemini_models(user=Depends(get_current_user), probe: str = ""):
+    """Temporary bring-up aid: lists which models support generateContent and
+    optionally probes a single generateContent call for a given model name."""
     url = "https://generativelanguage.googleapis.com/v1beta/models"
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=6.0)) as client:
             resp = await client.get(url, params={"key": EMERGENT_LLM_KEY, "pageSize": 100})
         if resp.status_code != 200:
             return {"models": [], "error": f"HTTP {resp.status_code}"}
-        names = [m.get("name", "") for m in resp.json().get("models", [])]
+        entries = []
+        for m in resp.json().get("models", []):
+            methods = m.get("supportedGenerationMethods") or []
+            entries.append(
+                {
+                    "name": m.get("name", ""),
+                    "generateContent": "generateContent" in methods,
+                }
+            )
     except Exception as e:
         return {"models": [], "error": f"{type(e).__name__}: {str(e)[:200]}"}
-    return {"models": names[:60], "count": len(names)}
+
+    result = {"count": len(entries), "models": entries[:80]}
+    if probe:
+        model = f"models/{probe}" if not probe.startswith("models/") else probe
+        payload = {"contents": [{"parts": [{"text": "Reply with exactly: OK"}]}]}
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=6.0)) as client:
+                pr = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent",
+                    params={"key": EMERGENT_LLM_KEY},
+                    json=payload,
+                )
+            result["probe"] = {"model": model, "status": pr.status_code, "snippet": (pr.text or "")[:120]}
+        except Exception as e:
+            result["probe"] = {"model": model, "status": "error", "snippet": str(e)[:120]}
+    return result
 
 
 # ---------------------------------------------------------------------------
