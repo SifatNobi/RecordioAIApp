@@ -512,7 +512,14 @@ async def analyze(body: AnalyzeRequest, user=Depends(get_current_user)):
         extraction = await _extract(transcript)
     except Exception as e:
         logger.error("Analyze extraction failed: %s", str(e))
-        raise HTTPException(status_code=502, detail="AI analysis failed. Please try again later.")
+        # The exception class (not its message, which could contain provider
+        # internals) is echoed in a response header so integration failures can
+        # be classified from the client side during bring-up.
+        raise HTTPException(
+            status_code=502,
+            detail="AI analysis failed. Please try again later.",
+            headers={"X-Analyze-Error": type(e).__name__},
+        )
 
     import uuid
     now = datetime.now(timezone.utc).isoformat()
