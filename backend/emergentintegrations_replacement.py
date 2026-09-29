@@ -5,7 +5,6 @@ Provides the same interface as emergentintegrations.llm.chat and emergentintegra
 using publicly available packages:
 - openai for transcription (Whisper)
 - google-generativeai for Gemini chat
-- assemblyai for transcription (AssemblyAI)
 """
 import os
 import json
@@ -29,13 +28,6 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
     logger.warning("google-generativeai package not available")
-
-try:
-    import assemblyai
-    ASSEMBLYAI_AVAILABLE = True
-except ImportError:
-    ASSEMBLYAI_AVAILABLE = False
-    logger.warning("assemblyai package not available")
 
 
 # =============================================================================
@@ -135,11 +127,7 @@ class AssemblyAISpeechToText:
     """
     
     def __init__(self, api_key: str):
-        if not ASSEMBLYAI_AVAILABLE:
-            raise ImportError("assemblyai package not installed. Install with: pip install assemblyai")
         self.api_key = api_key
-        assemblyai.settings.api_key = api_key
-        self.transcriber = assemblyai.Transcriber()
     
     async def transcribe(
         self, 
@@ -170,31 +158,102 @@ class AssemblyAISpeechToText:
                 file_obj.name = getattr(audio_file, 'name', 'audio.m4a')
                 audio_file = file_obj
             
-            config = assemblyai.TranscriptionConfig(
-                language_code=language,
-                speech_models=["universal-2"],
-            )
+            # Use raw HTTP API to avoid SDK version issues
+            import httpx
+            headers = {
+                "authorization": self.api_key,
+                "content-type": "application/json"
+            }
+            upload_response = await self._upload_audio(audio_file)
+            audio_url = upload_response["upload_url"]
             
-            response = await self._transcribe_async(audio_file, config)
+            transcript_request = {
+                "audio_url": audio_url,
+                "speech_models": ["universal-2"],
+            }
+            if language:
+                transcript_request["language_code"] = language
+            if prompt:
+                transcript_request["prompt"] = prompt
+                
+            transcript_response = await self._request_transcription(transcript_request)
+            transcript_id = transcript_response["id"]
             
-            if response.status == assemblyai.TranscriptStatus.error:
-                raise RuntimeError(f"AssemblyAI transcription failed: {response.error}")
+            # Poll for completion
+            transcript_result = await self._poll_transcription(transcript_id)
             
-            return response.text or ""
+            if transcript_result["status"] == "error":
+                raise RuntimeError(f"AssemblyAI transcription failed: {transcript_result.get('error', 'Unknown error')}")
             
+            return transcript_result.get("text", "")
+        
         except Exception as e:
             logger.error(f"AssemblyAI transcription failed: {e}")
             raise
     
-    async def _transcribe_async(self, audio_file, config):
-        """Async wrapper for AssemblyAI transcription"""
+    async def _upload_audio(self, audio_file):
+        """Upload audio file to AssemblyAI"""
+        import httpx
+        import io
+        
+        # Handle both file paths and file-like objects
+        if hasattr(audio_file, 'read'):
+            audio_file.seek(0)
+            file_content = audio_file.read()
+            content = file_content
+        elif isinstance(audio_file, str):
+            with open(audio_file, "rb") as f:
+                content = f.read()
+        else:
+            content = audio_file.getvalue() if hasattr(audio_file, 'getvalue') else bytes(audio_file)
+        
+        headers = {
+            "authorization": self.api_key,
+        }
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.assemblyai.com/v2/upload",
+                headers={"authorization": self.api_key},
+                content=content
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _request_transcription(self, transcript_request):
+        """Request transcription from AssemblyAI"""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.assemblyai.com/v2/transcript",
+                headers={
+                    "authorization": self.api_key,
+                    "content-type": "application/json"
+                },
+                json=transcript_request
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _poll_transcription(self, transcript_id):
+        """Poll for transcription completion"""
         import asyncio
-        loop = asyncio.get_event_loop()
         
-        def _transcribe():
-            return self.transcriber.transcribe(audio_file, config=config)
-        
-        return await asyncio.get_event_loop().run_in_executor(None, _transcribe)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            while True:
+                response = await client.get(
+                    f"https://api.assemblyai.com/v2/transcript/{transcript_id}",
+                    headers={"authorization": self.api_key}
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                status = result.get("status")
+                if status == "completed":
+                    return result
+                elif status == "error":
+                    return result
+                
+                await asyncio.sleep(3)
 
 
 # =============================================================================
