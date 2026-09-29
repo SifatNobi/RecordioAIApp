@@ -172,7 +172,7 @@ class AssemblyAISpeechToText:
             
             config = assemblyai.TranscriptionConfig(
                 language_code=language,
-                speech_models=["universal-2"],
+                speech_model="universal-2",
             )
             
             response = await self._transcribe_async(audio_file, config)
