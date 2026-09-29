@@ -17,7 +17,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 import httpx
 
-from emergentintegrations_replacement import LlmChat, UserMessage, OpenAISpeechToText
+from emergentintegrations_replacement import LlmChat, UserMessage, AssemblyAISpeechToText
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -41,6 +41,7 @@ GEMINI_FALLBACK_MODELS = [
     "gemini-flash-lite-latest",
 ]
 WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "").strip()
+ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
 
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 TRIAL_LIMIT = 10
@@ -362,7 +363,7 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
     if len(audio_bytes) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Audio exceeds 25 MB limit")
 
-    if not WHISPER_API_KEY:
+    if not ASSEMBLYAI_API_KEY:
         raise HTTPException(
             status_code=503,
             detail="Transcription is not configured on the server yet. Please try again later.",
@@ -374,10 +375,8 @@ async def transcribe(file: UploadFile = File(...), user=Depends(get_current_user
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
-        stt = OpenAISpeechToText(api_key=WHISPER_API_KEY)
-        with open(tmp_path, "rb") as audio_file:
-            result = await stt.transcribe(audio_file, model="whisper-1", response_format="text")
-        transcript = result if isinstance(result, str) else getattr(result, "text", str(result))
+        stt = AssemblyAISpeechToText(api_key=ASSEMBLYAI_API_KEY)
+        transcript = await stt.transcribe(tmp_path)
         transcript = (transcript or "").strip()
     except Exception as e:
         logger.error("Transcription failed: %s", str(e))

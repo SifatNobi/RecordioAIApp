@@ -5,6 +5,7 @@ Provides the same interface as emergentintegrations.llm.chat and emergentintegra
 using publicly available packages:
 - openai for transcription (Whisper)
 - google-generativeai for Gemini chat
+- assemblyai for transcription (AssemblyAI)
 """
 import os
 import json
@@ -28,6 +29,13 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
     logger.warning("google-generativeai package not available")
+
+try:
+    import assemblyai
+    ASSEMBLYAI_AVAILABLE = True
+except ImportError:
+    ASSEMBLYAI_AVAILABLE = False
+    logger.warning("assemblyai package not available")
 
 
 # =============================================================================
@@ -112,6 +120,79 @@ class OpenAISpeechToText:
                 prompt=prompt,
                 temperature=temperature
             )
+        
+        return await asyncio.get_event_loop().run_in_executor(None, _transcribe)
+
+
+# =============================================================================
+# AssemblyAI Speech-to-Text
+# =============================================================================
+
+class AssemblyAISpeechToText:
+    """
+    AssemblyAI Speech-to-Text transcription.
+    Uses AssemblyAI's API for high-quality speech-to-text transcription.
+    """
+    
+    def __init__(self, api_key: str):
+        if not ASSEMBLYAI_AVAILABLE:
+            raise ImportError("assemblyai package not installed. Install with: pip install assemblyai")
+        self.api_key = api_key
+        assemblyai.settings.api_key = api_key
+        self.transcriber = assemblyai.Transcriber()
+    
+    async def transcribe(
+        self, 
+        audio_file, 
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+    ) -> str:
+        """
+        Transcribe audio file using AssemblyAI API.
+        
+        Args:
+            audio_file: File-like object or path to audio file
+            language: Language code (ISO-639-1)
+            prompt: Optional prompt to guide transcription
+            
+        Returns:
+            Transcribed text as string
+        """
+        try:
+            # Handle both file paths and file-like objects
+            if hasattr(audio_file, 'read'):
+                # It's a file-like object
+                audio_file.seek(0)
+                file_content = audio_file.read()
+                # Create a temporary file-like object for AssemblyAI
+                import io
+                file_obj = io.BytesIO(file_content)
+                file_obj.name = getattr(audio_file, 'name', 'audio.m4a')
+                audio_file = file_obj
+            
+            config = assemblyai.TranscriptionConfig(
+                language_code=language,
+                speech_model="best",
+            )
+            
+            response = await self._transcribe_async(audio_file, config)
+            
+            if response.status == assemblyai.TranscriptStatus.error:
+                raise RuntimeError(f"AssemblyAI transcription failed: {response.error}")
+            
+            return response.text or ""
+            
+        except Exception as e:
+            logger.error(f"AssemblyAI transcription failed: {e}")
+            raise
+    
+    async def _transcribe_async(self, audio_file, config):
+        """Async wrapper for AssemblyAI transcription"""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        def _transcribe():
+            return self.transcriber.transcribe(audio_file, config=config)
         
         return await asyncio.get_event_loop().run_in_executor(None, _transcribe)
 

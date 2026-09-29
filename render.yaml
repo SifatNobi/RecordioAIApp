@@ -19,5 +19,7 @@ services:
         sync: false
       - key: WHISPER_API_KEY
         sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
     autoDeploy: true
     rootDir: backend
