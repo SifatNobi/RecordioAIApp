@@ -66,6 +66,110 @@ function buildTranscript(conversationId: string, result: TranscriptionResult): T
   };
 }
 
+function buildFallbackAnalysis(transcriptText: string, conversationId: string): ConversationAnalysis {
+  const now = new Date().toISOString();
+  
+  // Extract monetary amounts using regex
+  const moneyRegex = /\$?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(USD|EUR|GBP|USD|\$|€|£)/gi;
+  const moneyMatches = transcriptText.matchAll(moneyRegex);
+  const prices = [];
+  for (const match of moneyMatches) {
+    const amount = parseFloat(match[1].replace(/,/g, ''));
+    const currency = match[2].toUpperCase().replace('$', 'USD').replace('€', 'EUR').replace('£', 'GBP');
+    prices.push({
+      id: `price_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      productId: undefined,
+      amount,
+      currency,
+      billingPeriod: undefined,
+      confidence: 0.6,
+      sourceSegmentIds: [],
+      context: match[0],
+    });
+  }
+
+  // Extract dates/times
+  const dateRegex = /\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b)/gi;
+  const dateMatches = transcriptText.matchAll(dateRegex);
+  const commitments = [];
+  for (const match of dateMatches) {
+    commitments.push({
+      id: `cmt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      conversationId,
+      description: `Deadline or date mentioned: ${match[0]}`,
+      promisedBy: 'CUSTOMER' as const,
+      dueDate: match[0],
+      status: 'pending' as const,
+      confidence: 0.5,
+      sourceSegmentIds: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  // Extract potential commitments/promises
+  const promiseKeywords = ['will', 'shall', 'promise', 'commit', 'agree', 'guarantee', 'ensure', 'provide', 'deliver'];
+  const sentences = transcriptText.split(/[.!?]+/);
+  sentences.forEach((sentence, idx) => {
+    const lower = sentence.toLowerCase();
+    if (promiseKeywords.some(kw => lower.includes(kw))) {
+      commitments.push({
+        id: `cmt_${Date.now()}_${idx}`,
+        conversationId,
+        description: sentence.trim(),
+        promisedBy: lower.includes('i will') || lower.includes('we will') ? 'AI_AGENT' : 'CUSTOMER',
+        dueDate: undefined,
+        status: 'pending' as const,
+        confidence: 0.55,
+        sourceSegmentIds: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  // Detect potential discrepancies (simple heuristic)
+  const discrepancies = [];
+  if (prices.length > 1) {
+    discrepancies.push({
+      id: `disc_${Date.now()}`,
+      conversationId,
+      type: 'price_mismatch' as const,
+      description: 'Multiple price amounts detected in transcript',
+      promisedValue: prices.map(p => p.amount).join(', '),
+      actualValue: 'Multiple amounts found',
+      severity: 'low' as const,
+      confidence: 0.4,
+      sourceSegmentIds: [],
+      status: 'detected' as const,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return {
+    id: `analysis_${Date.now()}`,
+    conversationId,
+    products: [],
+    prices,
+    fees: [],
+    commitments,
+    discrepancies,
+    summary: 'Automated analysis (AI unavailable). Transcript processed with pattern matching.',
+    keyPoints: ['Transcript processed with fallback analysis (no AI provider configured)'],
+    sentiment: {
+      overall: 'neutral',
+      customer: 'neutral',
+      agent: 'neutral',
+      score: 0,
+    },
+    language: 'en',
+    confidence: 0.5,
+    modelVersion: 'fallback-v1',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function buildConversation(params: {
   recording: SavedRecording;
   transcript: Transcript;
@@ -186,11 +290,9 @@ export async function runRecordPipeline(
     });
     analysis = result.analysis;
   } catch (error) {
-    store.updateRecording(recordingId, {
-      status: 'analysis_failed',
-      error: userMessageForError(error),
-    });
-    throw error;
+    // Analysis failed - use deterministic fallback instead of failing
+    console.warn('AI analysis failed, using fallback:', error);
+    analysis = buildFallbackAnalysis(transcriptText, updated._transcript?.conversationId || `conv_${Date.now()}`);
   }
 
   let transcript = updated._transcript;
