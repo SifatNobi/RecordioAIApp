@@ -2,7 +2,7 @@
   "expo": {
     "name": "RecordioAIApp",
     "slug": "recordioai",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,10 +19,9 @@
         "NSMicrophoneUsageDescription": "RecordioAI uses the microphone to capture conversation audio for transcription and AI analysis."
       }
     },
-    "android": {
+"android": {
       "package": "com.recordioai.app",
       "versionCode": 6,
-"version": "1.1.3",
       "backgroundColor": "#000000",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
