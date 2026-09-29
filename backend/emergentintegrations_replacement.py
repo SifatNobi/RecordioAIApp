@@ -9,6 +9,7 @@ using publicly available packages:
 import os
 import json
 import logging
+import httpx
 from typing import Optional, List, Dict, Any, AsyncGenerator
 from dataclasses import dataclass
 
@@ -193,7 +194,6 @@ class AssemblyAISpeechToText:
     
     async def _upload_audio(self, audio_file):
         """Upload audio file to AssemblyAI"""
-        import httpx
         import io
         
         # Handle both file paths and file-like objects
