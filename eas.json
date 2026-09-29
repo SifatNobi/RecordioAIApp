@@ -23,6 +23,14 @@
         "gradleCommand": ":app:assembleRelease",
         "buildType": "apk"
       }
+    },
+    "internal": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
